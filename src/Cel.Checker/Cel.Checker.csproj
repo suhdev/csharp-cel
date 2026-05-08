@@ -1,13 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>CEL static type checker: declarations, overload resolution, gradual typing.</Description>
+    <RootNamespace>Cel</RootNamespace>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Cel.Core\Cel.Core.csproj" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cel.Runtime" />
+    <InternalsVisibleTo Include="Cel.Extensions" />
+    <InternalsVisibleTo Include="Cel" />
+    <InternalsVisibleTo Include="Cel.UnitTests" />
+  </ItemGroup>
 </Project>
