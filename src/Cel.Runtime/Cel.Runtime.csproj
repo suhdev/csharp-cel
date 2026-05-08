@@ -1,13 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>CEL evaluator: tree-walking interpreter, activations, POCO adapter, stdlib bindings.</Description>
+    <RootNamespace>Cel</RootNamespace>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Cel.Core\Cel.Core.csproj" />
+    <ProjectReference Include="..\Cel.Checker\Cel.Checker.csproj" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cel.Extensions" />
+    <InternalsVisibleTo Include="Cel" />
+    <InternalsVisibleTo Include="Cel.UnitTests" />
+  </ItemGroup>
 </Project>
