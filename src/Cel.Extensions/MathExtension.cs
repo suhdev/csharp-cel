@@ -17,17 +17,22 @@ public sealed class MathExtension : ICelExtension
 
     public void ConfigureEnv(CelEnv.Builder b)
     {
-        // greatest / least: 2-arg variants per numeric type plus a list form
+        // greatest / least: 1-5 arg parametric variants + list form. Cross-numeric mixes widen
+        // A to dyn via the checker's MostGeneral; runtime uses CelEquality.Compare to order.
+        var A = CelTypes.TypeParam("A");
         foreach (var name in new[] { "math.greatest", "math.least" })
         {
             var prefix = name == "math.greatest" ? "greatest_" : "least_";
+            // Order matters: the list form is more specific than the 1-arg parametric, so it
+            // must come first or the checker (which picks the first match) will treat
+            // `math.greatest([...])` as the 1-arg identity.
             b.Function(name,
-                new OverloadDecl(prefix + "int_int", [CelTypes.Int, CelTypes.Int], CelTypes.Int),
-                new OverloadDecl(prefix + "uint_uint", [CelTypes.Uint, CelTypes.Uint], CelTypes.Uint),
-                new OverloadDecl(prefix + "double_double", [CelTypes.Double, CelTypes.Double], CelTypes.Double),
-                new OverloadDecl(prefix + "list_int", [CelTypes.List(CelTypes.Int)], CelTypes.Int),
-                new OverloadDecl(prefix + "list_uint", [CelTypes.List(CelTypes.Uint)], CelTypes.Uint),
-                new OverloadDecl(prefix + "list_double", [CelTypes.List(CelTypes.Double)], CelTypes.Double));
+                new OverloadDecl(prefix + "list", [CelTypes.List(A)], A, TypeParams: ["A"]),
+                new OverloadDecl(prefix + "1", [A], A, TypeParams: ["A"]),
+                new OverloadDecl(prefix + "2", [A, A], A, TypeParams: ["A"]),
+                new OverloadDecl(prefix + "3", [A, A, A], A, TypeParams: ["A"]),
+                new OverloadDecl(prefix + "4", [A, A, A, A], A, TypeParams: ["A"]),
+                new OverloadDecl(prefix + "5", [A, A, A, A, A], A, TypeParams: ["A"]));
         }
 
         b.Function("math.ceil", DoubleUnary("math_ceil"));
@@ -72,19 +77,36 @@ public sealed class MathExtension : ICelExtension
 
     public void ConfigureRuntime(Action<string, OverloadFn> bind)
     {
-        bind("greatest_int_int", static a => CelValue.Of(Math.Max(I(a[0]), I(a[1]))));
-        bind("greatest_uint_uint", static a => CelValue.Of(Math.Max(U(a[0]), U(a[1]))));
-        bind("greatest_double_double", static a => CelValue.Of(Math.Max(D(a[0]), D(a[1]))));
-        bind("greatest_list_int", static a => Reduce((ListValue)a[0], static x => I(x), static (x, y) => Math.Max(x, y), CelValue.Of));
-        bind("greatest_list_uint", static a => Reduce((ListValue)a[0], static x => U(x), static (x, y) => Math.Max(x, y), CelValue.Of));
-        bind("greatest_list_double", static a => Reduce((ListValue)a[0], static x => D(x), static (x, y) => Math.Max(x, y), CelValue.Of));
+        OverloadFn maxArgs = static a =>
+        {
+            var best = a[0];
+            for (var i = 1; i < a.Length; i++)
+            {
+                if (Cel.Runtime.CelEquality.Compare(a[i], best) > 0) { best = a[i]; }
+            }
+            return best;
+        };
+        OverloadFn minArgs = static a =>
+        {
+            var best = a[0];
+            for (var i = 1; i < a.Length; i++)
+            {
+                if (Cel.Runtime.CelEquality.Compare(a[i], best) < 0) { best = a[i]; }
+            }
+            return best;
+        };
+        OverloadFn maxList = static a => ReduceVariadic((ListValue)a[0], static (x, y) =>
+            Cel.Runtime.CelEquality.Compare(x, y) >= 0 ? x : y);
+        OverloadFn minList = static a => ReduceVariadic((ListValue)a[0], static (x, y) =>
+            Cel.Runtime.CelEquality.Compare(x, y) <= 0 ? x : y);
 
-        bind("least_int_int", static a => CelValue.Of(Math.Min(I(a[0]), I(a[1]))));
-        bind("least_uint_uint", static a => CelValue.Of(Math.Min(U(a[0]), U(a[1]))));
-        bind("least_double_double", static a => CelValue.Of(Math.Min(D(a[0]), D(a[1]))));
-        bind("least_list_int", static a => Reduce((ListValue)a[0], static x => I(x), static (x, y) => Math.Min(x, y), CelValue.Of));
-        bind("least_list_uint", static a => Reduce((ListValue)a[0], static x => U(x), static (x, y) => Math.Min(x, y), CelValue.Of));
-        bind("least_list_double", static a => Reduce((ListValue)a[0], static x => D(x), static (x, y) => Math.Min(x, y), CelValue.Of));
+        for (var n = 1; n <= 5; n++)
+        {
+            bind($"greatest_{n}", maxArgs);
+            bind($"least_{n}", minArgs);
+        }
+        bind("greatest_list", maxList);
+        bind("least_list", minList);
 
         bind("math_ceil", static a => CelValue.Of(Math.Ceiling(D(a[0]))));
         bind("math_floor", static a => CelValue.Of(Math.Floor(D(a[0]))));
@@ -134,22 +156,18 @@ public sealed class MathExtension : ICelExtension
     private static ulong U(CelValue v) => ((UintValue)v).Value;
     private static double D(CelValue v) => ((DoubleValue)v).Value;
 
-    private static CelValue Reduce<T>(
-        ListValue list,
-        Func<CelValue, T> select,
-        Func<T, T, T> fold,
-        Func<T, CelValue> wrap)
+    private static CelValue ReduceVariadic(ListValue list, Func<CelValue, CelValue, CelValue> fold)
     {
         if (list.Elements.IsDefaultOrEmpty)
         {
             return CelValue.Error("empty list");
         }
-        var acc = select(list.Elements[0]);
+        var acc = list.Elements[0];
         for (var i = 1; i < list.Elements.Length; i++)
         {
-            acc = fold(acc, select(list.Elements[i]));
+            acc = fold(acc, list.Elements[i]);
         }
-        return wrap(acc);
+        return acc;
     }
 
     private static CelValue ShiftLeftInt(ReadOnlySpan<CelValue> a)

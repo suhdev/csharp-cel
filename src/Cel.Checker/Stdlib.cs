@@ -112,6 +112,37 @@ internal static class Stdlib
             new OverloadDecl("optindex_map", [CelTypes.Map(A, B), A],
                 CelTypes.Optional(B), TypeParams: ["A", "B"]));
 
+        // Optional select `e.?field` — the parser emits `Call(null, "_?._", [operand, "field"])`.
+        // Two overloads cover the static-typed map case and the gradual ObjectValue/dyn case.
+        builder.Function(Operators.OptSelect,
+            new OverloadDecl("optselect_map_string",
+                [CelTypes.Map(A, B), CelTypes.String], CelTypes.Optional(B), TypeParams: ["A", "B"]),
+            new OverloadDecl("optselect_dyn_string",
+                [CelTypes.Dyn, CelTypes.String], CelTypes.Optional(CelTypes.Dyn)));
+
+        // optional.of / optional.none / optional.ofNonZeroValue
+        builder.Function("optional.of",
+            new OverloadDecl("optional_of", [A], CelTypes.Optional(A), TypeParams: ["A"]));
+        builder.Function("optional.none",
+            new OverloadDecl("optional_none", [], CelTypes.Optional(CelTypes.Dyn)));
+        builder.Function("optional.ofNonZeroValue",
+            new OverloadDecl("optional_of_non_zero_value", [A], CelTypes.Optional(A), TypeParams: ["A"]));
+
+        // Instance methods on optional<A>.
+        builder.Function("hasValue",
+            new OverloadDecl("optional_has_value",
+                [CelTypes.Optional(A)], CelTypes.Bool, TypeParams: ["A"], IsInstance: true));
+        builder.Function("value",
+            new OverloadDecl("optional_value",
+                [CelTypes.Optional(A)], A, TypeParams: ["A"], IsInstance: true));
+        builder.Function("or",
+            new OverloadDecl("optional_or",
+                [CelTypes.Optional(A), CelTypes.Optional(A)], CelTypes.Optional(A),
+                TypeParams: ["A"], IsInstance: true));
+        builder.Function("orValue",
+            new OverloadDecl("optional_or_value",
+                [CelTypes.Optional(A), A], A, TypeParams: ["A"], IsInstance: true));
+
         // ── size / type / dyn ──
         builder.Function("size",
             new OverloadDecl("size_string", [CelTypes.String], CelTypes.Int),
@@ -199,12 +230,19 @@ internal static class Stdlib
     private static void AddOrdering(CelEnv.Builder builder, string fn, string idPrefix)
     {
         builder.Function(fn,
-            new OverloadDecl(idPrefix + "_int", [CelTypes.Int, CelTypes.Int], CelTypes.Bool),
-            new OverloadDecl(idPrefix + "_uint", [CelTypes.Uint, CelTypes.Uint], CelTypes.Bool),
-            new OverloadDecl(idPrefix + "_double", [CelTypes.Double, CelTypes.Double], CelTypes.Bool),
-            new OverloadDecl(idPrefix + "_string", [CelTypes.String, CelTypes.String], CelTypes.Bool),
-            new OverloadDecl(idPrefix + "_bytes", [CelTypes.Bytes, CelTypes.Bytes], CelTypes.Bool),
-            new OverloadDecl(idPrefix + "_timestamp", [CelTypes.Timestamp, CelTypes.Timestamp], CelTypes.Bool),
-            new OverloadDecl(idPrefix + "_duration", [CelTypes.Duration, CelTypes.Duration], CelTypes.Bool));
+            new OverloadDecl(idPrefix + "_int_int", [CelTypes.Int, CelTypes.Int], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_uint_uint", [CelTypes.Uint, CelTypes.Uint], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_double_double", [CelTypes.Double, CelTypes.Double], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_string_string", [CelTypes.String, CelTypes.String], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_bytes_bytes", [CelTypes.Bytes, CelTypes.Bytes], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_timestamp_timestamp", [CelTypes.Timestamp, CelTypes.Timestamp], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_duration_duration", [CelTypes.Duration, CelTypes.Duration], CelTypes.Bool),
+            // Heterogeneous numeric: total ordering across int / uint / double per CEL spec.
+            new OverloadDecl(idPrefix + "_int_uint", [CelTypes.Int, CelTypes.Uint], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_uint_int", [CelTypes.Uint, CelTypes.Int], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_int_double", [CelTypes.Int, CelTypes.Double], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_double_int", [CelTypes.Double, CelTypes.Int], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_uint_double", [CelTypes.Uint, CelTypes.Double], CelTypes.Bool),
+            new OverloadDecl(idPrefix + "_double_uint", [CelTypes.Double, CelTypes.Uint], CelTypes.Bool));
     }
 }

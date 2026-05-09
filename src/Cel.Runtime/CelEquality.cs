@@ -12,6 +12,10 @@ public static class CelEquality
     /// <summary>Returns true iff <paramref name="a"/> and <paramref name="b"/> compare equal under CEL's rules.</summary>
     public static bool Equals(CelValue a, CelValue b)
     {
+        // NaN ≠ anything (including itself) per IEEE 754; CEL spec adopts this.
+        if (a is DoubleValue ad && double.IsNaN(ad.Value)) { return false; }
+        if (b is DoubleValue bd && double.IsNaN(bd.Value)) { return false; }
+
         // Cross-numeric handles int/uint/double in any pairing.
         if (IsNumeric(a) && IsNumeric(b))
         {

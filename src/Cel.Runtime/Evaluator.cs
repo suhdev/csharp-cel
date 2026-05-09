@@ -108,14 +108,27 @@ public sealed class Evaluator
             return CelValue.Of(HasField(operand, e.Field));
         }
 
-        return operand switch
+        // Auto-unwrap select on optional: None propagates, Some(v) does the select on v and
+        // re-wraps successful access in Some(...). Failures still surface as errors.
+        if (operand is OptionalValue opt)
         {
-            MapValue m => MapLookup(m, CelValue.Of(e.Field), reportMissing: true),
-            ObjectValue o => ReadObjectField(o, e.Field),
-            NullValue => CelValue.Error($"select on null: {e.Field}"),
-            _ => CelValue.Error($"cannot select '{e.Field}' on {operand.Type.Name}"),
-        };
+            if (!opt.HasValue)
+            {
+                return OptionalValue.None;
+            }
+            var inner = ReadField(opt.Inner!, e.Field);
+            return inner is ErrorValue ? inner : OptionalValue.Of(inner);
+        }
+        return ReadField(operand, e.Field);
     }
+
+    private CelValue ReadField(CelValue operand, string field) => operand switch
+    {
+        MapValue m => MapLookup(m, CelValue.Of(field), reportMissing: true),
+        ObjectValue o => ReadObjectField(o, field),
+        NullValue => CelValue.Error($"select on null: {field}"),
+        _ => CelValue.Error($"cannot select '{field}' on {operand.Type.Name}"),
+    };
 
     private bool HasField(CelValue operand, string field) => operand switch
     {
@@ -165,6 +178,7 @@ public sealed class Evaluator
             case Operators.LogicalOr: return EvalOr(e, activation);
             case Operators.LogicalAnd: return EvalAnd(e, activation);
             case Operators.Conditional: return EvalTernary(e, activation);
+            case Operators.OptSelect: return EvalOptSelect(e, activation);
         }
 
         // The checker may have resolved this call as a namespaced global (e.g. `math.greatest`),
@@ -237,6 +251,50 @@ public sealed class Evaluator
         if (lhs is UnknownValue) { return lhs; }
         if (rhs is UnknownValue) { return rhs; }
         return CelValue.True;
+    }
+
+    /// <summary>
+    /// Optional select <c>e.?field</c>: returns <see cref="OptionalValue.Of"/> when the field
+    /// is present, <see cref="OptionalValue.None"/> when absent. Errors only on hard failures
+    /// (a field path that's structurally wrong, like selecting on a number).
+    /// </summary>
+    private CelValue EvalOptSelect(CallExpr e, IActivation a)
+    {
+        var operand = Visit(e.Args[0], a);
+        if (operand is ErrorValue or UnknownValue) { return operand; }
+
+        // The parser always emits the field name as a literal string constant.
+        if (e.Args[1] is not ConstantExpr { Value: StringConstant sc })
+        {
+            return CelValue.Error("optional select: field name must be a string literal");
+        }
+        var field = sc.Value;
+
+        return SelectOptional(operand, field);
+    }
+
+    private CelValue SelectOptional(CelValue operand, string field) => operand switch
+    {
+        MapValue m => MapContainsKey(m, CelValue.Of(field))
+            ? OptionalValue.Of(MapLookupRaw(m, CelValue.Of(field))!)
+            : OptionalValue.None,
+        ObjectValue o => _poco.TryGet(o.Native, field, out var raw) && raw is not null
+            ? OptionalValue.Of(ValueAdapter.ToCelValue(raw))
+            : OptionalValue.None,
+        OptionalValue opt => opt.HasValue ? SelectOptional(opt.Inner!, field) : OptionalValue.None,
+        _ => CelValue.Error($"cannot optional-select '{field}' on {operand.Type.Name}"),
+    };
+
+    private static CelValue? MapLookupRaw(MapValue map, CelValue key)
+    {
+        foreach (var (k, v) in map.Entries)
+        {
+            if (CelEquality.Equals(key, k))
+            {
+                return v;
+            }
+        }
+        return null;
     }
 
     private CelValue EvalTernary(CallExpr e, IActivation a)

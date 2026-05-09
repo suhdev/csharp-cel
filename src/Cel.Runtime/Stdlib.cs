@@ -29,6 +29,7 @@ internal static class Stdlib
         TypeOps(r);
         Conversions(r);
         Strings(r);
+        Optionals(r);
     }
 
     // ── arithmetic ──
@@ -179,21 +180,46 @@ internal static class Stdlib
 
     private static void Ordering(FunctionRegistry r)
     {
-        // Same-type orderings; cross-numeric ordering via parametric == is not yet covered.
-        BindOrdering(r, "less", (x, y) => x < 0);
-        BindOrdering(r, "less_equals", (x, y) => x <= 0);
-        BindOrdering(r, "greater", (x, y) => x > 0);
-        BindOrdering(r, "greater_equals", (x, y) => x >= 0);
+        BindOrdering(r, "less", (x, _) => x < 0);
+        BindOrdering(r, "less_equals", (x, _) => x <= 0);
+        BindOrdering(r, "greater", (x, _) => x > 0);
+        BindOrdering(r, "greater_equals", (x, _) => x >= 0);
 
         static void BindOrdering(FunctionRegistry r, string prefix, Func<int, int, bool> pred)
         {
-            r.Bind(prefix + "_int", a => CelValue.Of(pred(I(a[0]).CompareTo(I(a[1])), 0)));
-            r.Bind(prefix + "_uint", a => CelValue.Of(pred(U(a[0]).CompareTo(U(a[1])), 0)));
-            r.Bind(prefix + "_double", a => CelValue.Of(pred(D(a[0]).CompareTo(D(a[1])), 0)));
-            r.Bind(prefix + "_string", a => CelValue.Of(pred(string.CompareOrdinal(S(a[0]), S(a[1])), 0)));
-            r.Bind(prefix + "_bytes", a => CelValue.Of(pred(((BytesValue)a[0]).Value.AsSpan().SequenceCompareTo(((BytesValue)a[1]).Value.AsSpan()), 0)));
-            r.Bind(prefix + "_timestamp", a => CelValue.Of(pred(((TimestampValue)a[0]).Value.UnixNanos.CompareTo(((TimestampValue)a[1]).Value.UnixNanos), 0)));
-            r.Bind(prefix + "_duration", a => CelValue.Of(pred(((DurationValue)a[0]).Value.Nanos.CompareTo(((DurationValue)a[1]).Value.Nanos), 0)));
+            // Same-type orderings.
+            r.Bind(prefix + "_int_int", a => CelValue.Of(pred(I(a[0]).CompareTo(I(a[1])), 0)));
+            r.Bind(prefix + "_uint_uint", a => CelValue.Of(pred(U(a[0]).CompareTo(U(a[1])), 0)));
+            r.Bind(prefix + "_double_double", a =>
+            {
+                var av = D(a[0]);
+                var bv = D(a[1]);
+                // Any ordering relation involving NaN is false (IEEE 754, adopted by CEL).
+                if (double.IsNaN(av) || double.IsNaN(bv)) { return CelValue.False; }
+                return CelValue.Of(pred(av.CompareTo(bv), 0));
+            });
+            r.Bind(prefix + "_string_string", a => CelValue.Of(pred(string.CompareOrdinal(S(a[0]), S(a[1])), 0)));
+            r.Bind(prefix + "_bytes_bytes", a => CelValue.Of(pred(((BytesValue)a[0]).Value.AsSpan().SequenceCompareTo(((BytesValue)a[1]).Value.AsSpan()), 0)));
+            r.Bind(prefix + "_timestamp_timestamp", a => CelValue.Of(pred(((TimestampValue)a[0]).Value.UnixNanos.CompareTo(((TimestampValue)a[1]).Value.UnixNanos), 0)));
+            r.Bind(prefix + "_duration_duration", a => CelValue.Of(pred(((DurationValue)a[0]).Value.Nanos.CompareTo(((DurationValue)a[1]).Value.Nanos), 0)));
+
+            // Heterogeneous numeric — CelEquality.Compare promotes to double for cross-type.
+            // Loses precision for ints > 2^53 but matches CEL's "good enough" semantics for now.
+            OverloadFn cross = a =>
+            {
+                if ((a[0] is DoubleValue d1 && double.IsNaN(d1.Value))
+                    || (a[1] is DoubleValue d2 && double.IsNaN(d2.Value)))
+                {
+                    return CelValue.False;
+                }
+                return CelValue.Of(pred(CelEquality.Compare(a[0], a[1]), 0));
+            };
+            r.Bind(prefix + "_int_uint", cross);
+            r.Bind(prefix + "_uint_int", cross);
+            r.Bind(prefix + "_int_double", cross);
+            r.Bind(prefix + "_double_int", cross);
+            r.Bind(prefix + "_uint_double", cross);
+            r.Bind(prefix + "_double_uint", cross);
         }
     }
 
@@ -395,6 +421,66 @@ internal static class Stdlib
             return CelValue.Of(new CelDuration(nanos.Value));
         });
     }
+
+    private static void Optionals(FunctionRegistry r)
+    {
+        // Optional select on map: `m.?key` — looks up key, returns Optional.None on miss.
+        // The dyn variant (objects/POCOs) is handled inside the evaluator since it needs the
+        // PocoAdapter; here we just bind a fallback for non-map cases.
+        r.Bind("optselect_map_string", static a =>
+        {
+            var map = (MapValue)a[0];
+            return MapLookup(map, a[1]) is { } v ? OptionalValue.Of(v) : OptionalValue.None;
+        });
+        r.Bind("optselect_dyn_string", static a => a[0] switch
+        {
+            MapValue m => MapLookup(m, a[1]) is { } v ? OptionalValue.Of(v) : OptionalValue.None,
+            // ObjectValue is intercepted by the evaluator; if we reach here it's an unsupported type.
+            _ => OptionalValue.None,
+        });
+
+        r.Bind("optional_of", static a => OptionalValue.Of(a[0]));
+        r.Bind("optional_none", static _ => OptionalValue.None);
+        r.Bind("optional_of_non_zero_value", static a =>
+            IsZero(a[0]) ? OptionalValue.None : OptionalValue.Of(a[0]));
+
+        r.Bind("optional_has_value", static a => CelValue.Of(((OptionalValue)a[0]).HasValue));
+        r.Bind("optional_value", static a =>
+        {
+            var opt = (OptionalValue)a[0];
+            return opt.HasValue ? opt.Inner! : CelValue.Error("optional.value() on empty optional");
+        });
+        r.Bind("optional_or", static a =>
+        {
+            var lhs = (OptionalValue)a[0];
+            return lhs.HasValue ? lhs : a[1];
+        });
+        r.Bind("optional_or_value", static a =>
+        {
+            var lhs = (OptionalValue)a[0];
+            return lhs.HasValue ? lhs.Inner! : a[1];
+        });
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="v"/> is the canonical zero value for its type — used by
+    /// <c>optional.ofNonZeroValue</c> per cel-go.
+    /// </summary>
+    private static bool IsZero(CelValue v) => v switch
+    {
+        NullValue => true,
+        BoolValue b => !b.Value,
+        IntValue i => i.Value == 0,
+        UintValue u => u.Value == 0,
+        DoubleValue d => d.Value == 0.0,
+        StringValue s => s.Value.Length == 0,
+        BytesValue b => b.Value.IsDefaultOrEmpty,
+        ListValue l => l.Elements.IsDefaultOrEmpty,
+        MapValue m => m.Entries.Count == 0,
+        DurationValue d => d.Value.Nanos == 0,
+        TimestampValue t => t.Value.UnixNanos == 0,
+        _ => false,
+    };
 
     private static void Strings(FunctionRegistry r)
     {

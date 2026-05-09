@@ -152,9 +152,20 @@ public sealed class Checker
             MapType m => m.ValueType,
             // Object field types require a TypeProvider; until Phase 4 plugs one in, defer.
             ObjectType => CelTypes.Dyn,
+            // Auto-unwrap select on optional propagates None and wraps Some(field) in Some.
+            // Result is always optional<T>.
+            OptionalType opt => CelTypes.Optional(SelectInner(opt.InnerType)),
             _ => DiagnoseTypeMismatch(e, $"cannot select '{e.Field}' on {operandType.Name}"),
         };
     }
+
+    private static CelType SelectInner(CelType inner) => inner switch
+    {
+        MapType m => m.ValueType,
+        ObjectType => CelTypes.Dyn,
+        DynType => CelTypes.Dyn,
+        _ => CelTypes.Dyn, // runtime catches mismatch
+    };
 
     private CelType VisitCall(CallExpr e)
     {
@@ -176,12 +187,21 @@ public sealed class Checker
                     {
                         argTypesNs.Add(Visit(a));
                     }
-                    var (m, r) = TryMatchOverload(qualifiedFn, receiverType: null, argTypesNs.ToImmutable());
+                    var actualsNs = argTypesNs.ToImmutable();
+                    var (m, r) = TryMatchOverload(qualifiedFn, receiverType: null, actualsNs);
                     if (m is not null)
                     {
                         _refs[e.Id] = new ResolvedReference(qualifiedFn.Name, m.Id, TargetIsNamespace: true);
                         return r;
                     }
+                    // Found the function but no overload matched — this is the more useful
+                    // message than letting the regular path try (and fail) to resolve `prefix`
+                    // as a variable.
+                    var argList = string.Join(", ", actualsNs.Select(static t => t.Name));
+                    Report("CEL-2003",
+                        $"no matching overload for {qualifiedName}({argList})",
+                        LocationOf(e));
+                    return CelTypes.Error;
                 }
             }
         }
