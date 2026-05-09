@@ -48,11 +48,11 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 | `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
 | `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **82–96%** |
 | `bindings_ext`, `comparisons` | **100%** |
-| `conversions`, `dynamic`, `math_ext`, `string_ext`, `timestamps`, `wrappers` | **86–98%** |
-| `proto3`, `proto2`, `parse`, `optionals`, `enums`, `fields`, `namespace`, `macros2` | **73–87%** |
+| `network_ext`, `dynamic`, `conversions`, `string_ext`, `wrappers`, `math_ext`, `timestamps`, `string` | **86–100%** |
+| `proto3`, `macros2`, `parse`, `proto2`, `enums`, `fields`, `namespace`, `optionals` | **73–87%** |
 | `block_ext` | **0%** — `cel.@block` is an internal optimisation form, not a user macro |
-| `network_ext`, `proto2_ext`, `type_deduction`, `unknowns` | **0–13%** — features not yet built |
-| **Total** | **1969 / 2263 ran (87%) over 2454 cases (191 skipped)** |
+| `proto2_ext`, `type_deduction`, `unknowns`, `encoders_ext` | **0–75%** — feature gaps |
+| **Total** | **2029 / 2263 ran (90%) over 2454 cases (191 skipped)** |
 
 ### Known gaps
 

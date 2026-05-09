@@ -101,6 +101,10 @@ public sealed class Evaluator
         ["type"] = new TypeValue(CelTypes.Type),
         ["google.protobuf.Timestamp"] = new TypeValue(CelTypes.Timestamp),
         ["google.protobuf.Duration"] = new TypeValue(CelTypes.Duration),
+        // Network extension type denotations — kept here so `type(ip(x)) == net.IP` works
+        // without each host having to seed them in the activation.
+        ["net.IP"] = new TypeValue(CelTypes.Object("net.IP")),
+        ["net.CIDR"] = new TypeValue(CelTypes.Object("net.CIDR")),
     };
 
     private CelValue VisitIdentifier(IdentifierExpr e, IActivation activation)
@@ -133,6 +137,13 @@ public sealed class Evaluator
 
     private CelValue VisitSelectAsQualifiedVariable(string qualifiedName, IActivation activation)
     {
+        // Type denotations like `net.IP` and `google.protobuf.Timestamp` arrive here because
+        // the parser builds them as SelectExpr chains; resolve through the same dictionary
+        // the bare-identifier path uses.
+        if (TypeDenotations.TryGetValue(qualifiedName, out var denotation))
+        {
+            return denotation;
+        }
         if (activation.TryResolve(qualifiedName, out var raw))
         {
             return WrapManagedAware(raw);
