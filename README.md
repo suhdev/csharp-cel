@@ -47,13 +47,12 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 |----------|--------|
 | `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
 | `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **82–96%** |
-| `comparisons` | **100%** — all 385 ran cases pass |
+| `bindings_ext`, `comparisons` | **100%** |
 | `conversions`, `dynamic`, `math_ext`, `string_ext`, `timestamps`, `wrappers` | **86–98%** |
-| `parse`, `proto3`, `enums`, `proto2`, `fields`, `optionals` | **69–85%** |
-| `namespace` | **60%** |
-| `bindings_ext`, `block_ext` | **0%** — `cel.bind` / `cel.@block` need parser-level macro hooks |
-| `network_ext`, `macros2`, `proto2_ext`, `type_deduction`, `unknowns` | **0–17%** — features not yet built |
-| **Total** | **1920 / 2263 ran (85%) over 2454 cases (191 skipped)** |
+| `proto3`, `proto2`, `parse`, `optionals`, `enums`, `fields`, `namespace`, `macros2` | **73–87%** |
+| `block_ext` | **0%** — `cel.@block` is an internal optimisation form, not a user macro |
+| `network_ext`, `proto2_ext`, `type_deduction`, `unknowns` | **0–13%** — features not yet built |
+| **Total** | **1969 / 2263 ran (87%) over 2454 cases (191 skipped)** |
 
 ### Known gaps
 

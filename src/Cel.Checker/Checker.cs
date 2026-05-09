@@ -372,7 +372,8 @@ public sealed class Checker
         {
             case ListType l:
                 ok = true;
-                return (l.ElementType, null);
+                // Two-iter list comprehension binds (index, element) per macros2 semantics.
+                return e.IterVar2 is null ? (l.ElementType, null) : (CelTypes.Int, l.ElementType);
             case MapType m:
                 ok = true;
                 return e.IterVar2 is null ? (m.KeyType, null) : (m.KeyType, m.ValueType);

@@ -612,17 +612,25 @@ public sealed class Parser
             return ExpandHas(args[0], loc);
         }
 
-        // Hardcoded receiver-style macros.
+        // Hardcoded receiver-style macros. `exists_one` is accepted under both spellings
+        // because the v1 spec used `exists_one` while cel-go and the macros2 tests use
+        // `existsOne`.
         if (receiver is not null)
         {
+            var isExistsOne = function == Cel.Macros.ExistsOne || function == "existsOne";
             var builtin = function switch
             {
                 Cel.Macros.All when args.Length == 2 => ExpandQuantifier(receiver, args, loc, exists: false),
+                Cel.Macros.All when args.Length == 3 => ExpandQuantifier2(receiver, args, loc, exists: false),
                 Cel.Macros.Exists when args.Length == 2 => ExpandQuantifier(receiver, args, loc, exists: true),
-                Cel.Macros.ExistsOne when args.Length == 2 => ExpandExistsOne(receiver, args, loc),
+                Cel.Macros.Exists when args.Length == 3 => ExpandQuantifier2(receiver, args, loc, exists: true),
+                _ when isExistsOne && args.Length == 2 => ExpandExistsOne(receiver, args, loc),
+                _ when isExistsOne && args.Length == 3 => ExpandExistsOne2(receiver, args, loc),
                 Cel.Macros.Map when args.Length == 2 => ExpandMap(receiver, args, filter: null, loc),
                 Cel.Macros.Map when args.Length == 3 => ExpandMap(receiver, [args[0], args[2]], filter: args[1], loc),
                 Cel.Macros.Filter when args.Length == 2 => ExpandFilter(receiver, args, loc),
+                "transformList" when args.Length == 3 => ExpandTransformList2(receiver, args[0], args[1], filter: null, args[2], loc),
+                "transformList" when args.Length == 4 => ExpandTransformList2(receiver, args[0], args[1], filter: args[2], args[3], loc),
                 _ => null,
             };
             if (builtin is not null)
@@ -782,6 +790,93 @@ public sealed class Parser
 
         return _builder.Comprehension(iter.Name, receiver, accuVar, accuInit, loopCondition, loopStep,
             _builder.Identifier(accuVar, loc), loc);
+    }
+
+    /// <summary>
+    /// Two-iterator quantifier (<c>m.all(k, v, p)</c>, <c>list.exists(i, v, p)</c>): same shape
+    /// as the single-iterator form but with <c>iter_var2</c> populated. For lists, the first
+    /// var is the element index and the second is the element; for maps, key + value.
+    /// </summary>
+    private Expr ExpandQuantifier2(Expr receiver, ImmutableArray<Expr> args, SourceLocation loc, bool exists)
+    {
+        if (args[0] is not IdentifierExpr iter1 || args[1] is not IdentifierExpr iter2)
+        {
+            Error("CEL-1020", $"first two arguments of '{(exists ? "exists" : "all")}' must be identifiers", loc);
+            return ErrorPlaceholder(loc);
+        }
+        var pred = args[2];
+        var accuVar = Operators.AccumulatorName;
+        var accuInit = _builder.Constant(new BoolConstant(!exists), loc);
+        var accuRef = _builder.Identifier(accuVar, loc);
+
+        Expr loopCondArg = exists
+            ? _builder.Call(null, Operators.LogicalNot, [_builder.Identifier(accuVar, loc)], loc)
+            : _builder.Identifier(accuVar, loc);
+        var loopCondition = _builder.Call(null, Operators.NotStrictlyFalse, [loopCondArg], loc);
+
+        var combineOp = exists ? Operators.LogicalOr : Operators.LogicalAnd;
+        var loopStep = _builder.Call(null, combineOp,
+            [_builder.Identifier(accuVar, loc), pred],
+            loc);
+
+        return _builder.Comprehension(
+            iter1.Name, receiver, accuVar, accuInit, loopCondition, loopStep, accuRef, loc,
+            iterVar2: iter2.Name);
+    }
+
+    /// <summary>
+    /// Two-iterator <c>transformList</c>: <c>list.transformList(i, v, t)</c> appends
+    /// <c>t</c> to a fresh list at each element, with <c>i</c> bound to the index and <c>v</c>
+    /// to the element. The 4-arg form <c>list.transformList(i, v, filter, t)</c> wraps the
+    /// append in a conditional.
+    /// </summary>
+    private Expr ExpandTransformList2(Expr receiver, Expr iterArg1, Expr iterArg2, Expr? filter, Expr transform, SourceLocation loc)
+    {
+        if (iterArg1 is not IdentifierExpr iter1 || iterArg2 is not IdentifierExpr iter2)
+        {
+            Error("CEL-1022", "first two arguments of 'transformList' must be identifiers", loc);
+            return ErrorPlaceholder(loc);
+        }
+        var accuVar = Operators.AccumulatorName;
+        var accuInit = _builder.List([], [], loc);
+        var loopCondition = _builder.Constant(new BoolConstant(true), loc);
+        var append = _builder.Call(null, Operators.Add,
+            [_builder.Identifier(accuVar, loc),
+             _builder.List([transform], [], loc)],
+            loc);
+        var loopStep = filter is null
+            ? append
+            : _builder.Call(null, Operators.Conditional,
+                [filter, append, _builder.Identifier(accuVar, loc)],
+                loc);
+        return _builder.Comprehension(
+            iter1.Name, receiver, accuVar, accuInit, loopCondition, loopStep,
+            _builder.Identifier(accuVar, loc), loc,
+            iterVar2: iter2.Name);
+    }
+
+    /// <summary>Two-iterator <c>exists_one</c> — same expansion as the single-iter form but with iter_var2.</summary>
+    private Expr ExpandExistsOne2(Expr receiver, ImmutableArray<Expr> args, SourceLocation loc)
+    {
+        if (args[0] is not IdentifierExpr iter1 || args[1] is not IdentifierExpr iter2)
+        {
+            Error("CEL-1021", "first two arguments of 'exists_one' must be identifiers", loc);
+            return ErrorPlaceholder(loc);
+        }
+        var pred = args[2];
+        var accuVar = Operators.AccumulatorName;
+        var accuInit = _builder.Constant(new IntConstant(0), loc);
+        var loopCondition = _builder.Constant(new BoolConstant(true), loc);
+        var oneLit = _builder.Constant(new IntConstant(1), loc);
+        var increment = _builder.Call(null, Operators.Add,
+            [_builder.Identifier(accuVar, loc), oneLit], loc);
+        var loopStep = _builder.Call(null, Operators.Conditional,
+            [pred, increment, _builder.Identifier(accuVar, loc)], loc);
+        var resultEqOne = _builder.Call(null, Operators.Equal,
+            [_builder.Identifier(accuVar, loc), _builder.Constant(new IntConstant(1), loc)], loc);
+        return _builder.Comprehension(
+            iter1.Name, receiver, accuVar, accuInit, loopCondition, loopStep, resultEqOne, loc,
+            iterVar2: iter2.Name);
     }
 
     private Expr ExpandFilter(Expr receiver, ImmutableArray<Expr> args, SourceLocation loc)

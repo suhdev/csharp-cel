@@ -519,13 +519,10 @@ public sealed class Evaluator
         var range = Visit(e.IterRange, activation);
         if (range is ErrorValue or UnknownValue) { return range; }
 
-        var elements = range switch
-        {
-            ListValue l => (IReadOnlyList<CelValue>)l.Elements,
-            MapValue m => [.. m.Entries.Keys],
-            _ => null,
-        };
-        if (elements is null)
+        // Two-iterator macros (macros2): list.all(i, v, p) binds index+element; map.all(k, v, p)
+        // binds key+value. Single-iterator stays as element / key like before.
+        var iterPairs = EnumerateRange(range, e.IterVar2 is not null);
+        if (iterPairs is null)
         {
             return CelValue.Error($"cannot iterate over {range.Type.Name}");
         }
@@ -535,13 +532,17 @@ public sealed class Evaluator
         var frame = new Dictionary<string, object?>(StringComparer.Ordinal);
         var scoped = new ScopedActivation(activation, frame);
 
-        foreach (var item in elements)
+        foreach (var (a, b) in iterPairs)
         {
             if (++iterations > MaxIterations)
             {
                 return CelValue.Error("comprehension iteration limit exceeded");
             }
-            frame[e.IterVar] = item;
+            frame[e.IterVar] = a;
+            if (e.IterVar2 is not null)
+            {
+                frame[e.IterVar2] = b;
+            }
             frame[e.AccuVar] = accu;
             var cont = Visit(e.LoopCondition, scoped);
             if (cont is BoolValue { Value: false })
@@ -557,5 +558,46 @@ public sealed class Evaluator
             [e.AccuVar] = accu,
         };
         return Visit(e.Result, new ScopedActivation(activation, resultFrame));
+    }
+
+    /// <summary>
+    /// Iterate the range as (iter_var, iter_var2) pairs. For two-iter mode: list yields
+    /// (index, element) and map yields (key, value). For single-iter, the second element is
+    /// ignored and we yield (element, _) for lists or (key, _) for maps.
+    /// </summary>
+    private static IEnumerable<(CelValue, CelValue)>? EnumerateRange(CelValue range, bool twoIter)
+    {
+        switch (range)
+        {
+            case ListValue l:
+                return EnumerateList(l, twoIter);
+            case MapValue m:
+                return EnumerateMap(m);
+            default:
+                return null;
+        }
+
+        static IEnumerable<(CelValue, CelValue)> EnumerateList(ListValue list, bool twoIter)
+        {
+            for (var i = 0; i < list.Elements.Length; i++)
+            {
+                if (twoIter)
+                {
+                    yield return (CelValue.Of((long)i), list.Elements[i]);
+                }
+                else
+                {
+                    yield return (list.Elements[i], CelValue.Null);
+                }
+            }
+        }
+
+        static IEnumerable<(CelValue, CelValue)> EnumerateMap(MapValue map)
+        {
+            foreach (var (k, v) in map.Entries)
+            {
+                yield return (k, v);
+            }
+        }
     }
 }
