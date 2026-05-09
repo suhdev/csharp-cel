@@ -14,8 +14,8 @@ first-class — protobuf is optional.
 Declare what variables an expression can reference, compile, and evaluate:
 
 ```csharp
-using Cel;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Types;
 
 var env = CelEnv.NewBuilder()
     .Variable("name", CelTypes.String)
@@ -37,9 +37,9 @@ properties of an anonymous root become CEL variables; nested field access is
 resolved at runtime by the reflection-backed POCO adapter:
 
 ```csharp
-using Cel;
-using Cel.Extensions;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Extensions;
+using DotnetCel.Types;
 
 public sealed record User(string Name, int Age, string[] Roles);
 
@@ -118,9 +118,9 @@ bool hasAffordable = (bool)program.Eval(new
 Extend the language with your own functions via `ICelExtension`:
 
 ```csharp
-using Cel;
-using Cel.Types;
-using Cel.Values;
+using DotnetCel;
+using DotnetCel.Types;
+using DotnetCel.Values;
 
 public sealed class GreetExtension : ICelExtension
 {
@@ -149,14 +149,14 @@ complete API reference. Run locally with `cd docs && npm install && npm run dev`
 
 ## Layout
 
-- `src/Cel.Core` — AST, type system, value model, diagnostics. No external deps.
-- `src/Cel.Parser` — lexer + Pratt parser, macro expansion.
-- `src/Cel.Checker` — type checker, declarations, overload resolution.
-- `src/Cel.Runtime` — tree-walking evaluator, activations, POCO adapter, stdlib.
-- `src/Cel.Extensions` — strings, math, encoders, sets, optionals, bindings, network, block.
-- `src/Cel` — public façade (`CelExpression`, `CompiledProgram`).
-- `tests/Cel.UnitTests` — unit tests (181 cases).
-- `tests/Cel.Conformance` — runs the cel-spec textproto conformance corpus.
+- `src/DotnetCel.Core` — AST, type system, value model, diagnostics. No external deps.
+- `src/DotnetCel.Parser` — lexer + Pratt parser, macro expansion.
+- `src/DotnetCel.Checker` — type checker, declarations, overload resolution.
+- `src/DotnetCel.Runtime` — tree-walking evaluator, activations, POCO adapter, stdlib.
+- `src/DotnetCel.Extensions` — strings, math, encoders, sets, optionals, bindings, network, block.
+- `src/DotnetCel` — public façade (`CelExpression`, `CompiledProgram`).
+- `tests/DotnetCel.UnitTests` — unit tests (181 cases).
+- `tests/DotnetCel.Conformance` — runs the cel-spec textproto conformance corpus.
 - `docs/` — Astro Starlight documentation site.
 
 ## Conformance
@@ -164,11 +164,11 @@ complete API reference. Run locally with `cd docs && npm install && npm run dev`
 Run the harness against a checkout of `cel-spec` (sibling repo by default):
 
 ```sh
-dotnet run --project tests/Cel.Conformance
+dotnet run --project tests/DotnetCel.Conformance
 # or with a custom path:
-dotnet run --project tests/Cel.Conformance -- /path/to/cel-spec/tests/simple/testdata
+dotnet run --project tests/DotnetCel.Conformance -- /path/to/cel-spec/tests/simple/testdata
 # or specific files:
-dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata --only basic comparisons
+dotnet run --project tests/DotnetCel.Conformance -- ../cel-spec/tests/simple/testdata --only basic comparisons
 ```
 
 ### Current pass rate (cel-spec corpus, all 30 files)
