@@ -158,12 +158,41 @@ public sealed class Checker
 
     private CelType VisitCall(CallExpr e)
     {
+        // First, see if the target chain is actually a namespace prefix referring to a
+        // qualified function (e.g. `math.greatest(1, 2)` where `math` isn't a variable but
+        // `math.greatest` is a declared function). If so, dispatch as a global call without
+        // ever evaluating the target as a value.
+        if (e.Target is not null)
+        {
+            var prefix = TryFlattenIdentChain(e.Target);
+            if (prefix is not null)
+            {
+                var qualifiedName = $"{prefix}.{e.Function}";
+                var qualifiedFn = _env.ResolveFunction(qualifiedName);
+                if (qualifiedFn is not null)
+                {
+                    var argTypesNs = ImmutableArray.CreateBuilder<CelType>(e.Args.Length);
+                    foreach (var a in e.Args)
+                    {
+                        argTypesNs.Add(Visit(a));
+                    }
+                    var (m, r) = TryMatchOverload(qualifiedFn, receiverType: null, argTypesNs.ToImmutable());
+                    if (m is not null)
+                    {
+                        _refs[e.Id] = new ResolvedReference(qualifiedFn.Name, m.Id, TargetIsNamespace: true);
+                        return r;
+                    }
+                }
+            }
+        }
+
         var receiverType = e.Target is null ? null : (CelType?)Visit(e.Target);
         var argTypes = ImmutableArray.CreateBuilder<CelType>(e.Args.Length);
         foreach (var a in e.Args)
         {
             argTypes.Add(Visit(a));
         }
+        var actualArgTypes = argTypes.ToImmutable();
 
         var fn = _env.ResolveFunction(e.Function);
         if (fn is null)
@@ -172,56 +201,11 @@ public sealed class Checker
             return CelTypes.Error;
         }
 
-        // Build the actual argument list (with receiver prepended for instance overloads).
-        ImmutableArray<CelType>? instanceArgs = receiverType is null
-            ? null
-            : (ImmutableArray<CelType>)[receiverType, .. argTypes];
-        ImmutableArray<CelType>? globalArgs = receiverType is null
-            ? argTypes.ToImmutable()
-            : null;
-
-        OverloadDecl? matched = null;
-        CelType resultType = CelTypes.Error;
-
-        foreach (var overload in fn.Overloads)
-        {
-            var actual = (overload.IsInstance, instanceArgs.HasValue) switch
-            {
-                (true, true) => instanceArgs!.Value,
-                (false, false) => globalArgs!.Value,
-                _ => default,
-            };
-            if (actual.IsDefault)
-            {
-                continue;
-            }
-            if (actual.Length != overload.ArgTypes.Length)
-            {
-                continue;
-            }
-
-            var sub = new Dictionary<string, CelType>(StringComparer.Ordinal);
-            var ok = true;
-            for (var i = 0; i < actual.Length; i++)
-            {
-                if (!TypeAlgebra.Unify(overload.ArgTypes[i], actual[i], sub))
-                {
-                    ok = false;
-                    break;
-                }
-            }
-            if (!ok)
-            {
-                continue;
-            }
-            matched = overload;
-            resultType = TypeAlgebra.Substitute(overload.ResultType, sub);
-            break;
-        }
+        var (matched, resultType) = TryMatchOverload(fn, receiverType, actualArgTypes);
 
         if (matched is null)
         {
-            var argList = string.Join(", ", argTypes.Select(static t => t.Name));
+            var argList = string.Join(", ", actualArgTypes.Select(static t => t.Name));
             var receiverDesc = receiverType is null ? "" : $"{receiverType.Name}.";
             Report("CEL-2003",
                 $"no matching overload for {receiverDesc}{e.Function}({argList})",
@@ -366,6 +350,76 @@ public sealed class Checker
 
     private static bool IsBoolOrFlexible(CelType t) =>
         CheckerHelpers.IsBool(t) || t is DynType or ErrorType;
+
+    /// <summary>
+    /// Try to match the supplied actual argument types against any of <paramref name="fn"/>'s
+    /// overloads. Returns the first overload whose arg types unify and the substituted result
+    /// type. Receiver-bearing calls match instance overloads; null receiver matches global.
+    /// </summary>
+    private static (OverloadDecl? Overload, CelType ResultType) TryMatchOverload(
+        FunctionDecl fn, CelType? receiverType, ImmutableArray<CelType> argTypes)
+    {
+        ImmutableArray<CelType>? instanceArgs = receiverType is null
+            ? null
+            : (ImmutableArray<CelType>)[receiverType, .. argTypes];
+        ImmutableArray<CelType>? globalArgs = receiverType is null ? argTypes : null;
+
+        foreach (var overload in fn.Overloads)
+        {
+            var actual = (overload.IsInstance, instanceArgs.HasValue) switch
+            {
+                (true, true) => instanceArgs!.Value,
+                (false, false) => globalArgs!.Value,
+                _ => default,
+            };
+            if (actual.IsDefault || actual.Length != overload.ArgTypes.Length)
+            {
+                continue;
+            }
+            var sub = new Dictionary<string, CelType>(StringComparer.Ordinal);
+            var ok = true;
+            for (var i = 0; i < actual.Length; i++)
+            {
+                if (!TypeAlgebra.Unify(overload.ArgTypes[i], actual[i], sub))
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok)
+            {
+                return (overload, TypeAlgebra.Substitute(overload.ResultType, sub));
+            }
+        }
+        return (null, CelTypes.Error);
+    }
+
+    /// <summary>
+    /// Flatten a chain of <see cref="SelectExpr"/> ending in an <see cref="IdentifierExpr"/>
+    /// into a dotted name, mirroring the convention used for namespace prefixes. Returns null
+    /// if any part of the chain is something other than ident/select.
+    /// </summary>
+    private static string? TryFlattenIdentChain(Expr e)
+    {
+        var parts = new Stack<string>();
+        var cur = e;
+        while (cur is SelectExpr s && !s.TestOnly)
+        {
+            parts.Push(s.Field);
+            cur = s.Operand;
+        }
+        if (cur is IdentifierExpr ident)
+        {
+            var name = ident.Name;
+            if (name.Length > 0 && name[0] == '.')
+            {
+                name = name[1..];
+            }
+            parts.Push(name);
+            return string.Join('.', parts);
+        }
+        return null;
+    }
 }
 
 file static class CheckerHelpers

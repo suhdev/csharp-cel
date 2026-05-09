@@ -21,11 +21,15 @@ public sealed record CheckedAst(
 /// <summary>
 /// Records the outcome of resolving an identifier or call site. <see cref="OverloadId"/> is set
 /// for call sites and identifies the matched <see cref="OverloadDecl"/> for runtime dispatch.
+/// <see cref="TargetIsNamespace"/> is true for call sites where the target chain is a namespace
+/// prefix (e.g. <c>math</c> in <c>math.greatest(1, 2)</c>) rather than a value to evaluate; the
+/// evaluator skips evaluating the target in that case.
 /// </summary>
 public sealed record ResolvedReference(
     string Name,
     string? OverloadId = null,
-    Cel.Ast.ConstValue? Value = null);
+    Cel.Ast.ConstValue? Value = null,
+    bool TargetIsNamespace = false);
 
 /// <summary>Outcome of type-checking. <see cref="Ast"/> is null when the source had errors.</summary>
 public sealed record CheckResult(

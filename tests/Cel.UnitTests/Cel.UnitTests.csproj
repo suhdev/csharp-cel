@@ -20,5 +20,6 @@
     <ProjectReference Include="..\..\src\Cel.Checker\Cel.Checker.csproj" />
     <ProjectReference Include="..\..\src\Cel.Runtime\Cel.Runtime.csproj" />
     <ProjectReference Include="..\..\src\Cel\Cel.csproj" />
+    <ProjectReference Include="..\..\src\Cel.Extensions\Cel.Extensions.csproj" />
   </ItemGroup>
 </Project>

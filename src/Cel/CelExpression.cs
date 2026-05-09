@@ -34,7 +34,7 @@ public static class CelExpression
             throw new CelCompileException(checkResult.Diagnostics);
         }
 
-        return new CompiledProgram(checkResult.Ast);
+        return new CompiledProgram(checkResult.Ast, env);
     }
 }
 
@@ -46,10 +46,15 @@ public sealed class CompiledProgram
 
     public CheckedAst Ast { get; }
 
-    internal CompiledProgram(CheckedAst ast)
+    internal CompiledProgram(CheckedAst ast, CelEnv env)
     {
         Ast = ast;
-        _evaluator = new Evaluator(ast, FunctionRegistry.CreateStandard());
+        var registry = FunctionRegistry.CreateStandard();
+        foreach (var ext in env.Extensions)
+        {
+            ext.ConfigureRuntime(registry.Bind);
+        }
+        _evaluator = new Evaluator(ast, registry);
     }
 
     /// <summary>Result type as inferred by the checker.</summary>

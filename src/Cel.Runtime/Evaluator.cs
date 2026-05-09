@@ -167,11 +167,16 @@ public sealed class Evaluator
             case Operators.Conditional: return EvalTernary(e, activation);
         }
 
+        // The checker may have resolved this call as a namespaced global (e.g. `math.greatest`),
+        // in which case the AST's "target" is a namespace prefix and must NOT be evaluated.
+        var hasResolvedRef = _ast.ReferenceMap.TryGetValue(e.Id, out var refInfo);
+        var skipTarget = hasResolvedRef && refInfo!.TargetIsNamespace;
+
         // Eager arg evaluation; first error/unknown short-circuits.
-        var totalArgs = e.Args.Length + (e.Target is null ? 0 : 1);
+        var totalArgs = e.Args.Length + (e.Target is null || skipTarget ? 0 : 1);
         var args = new CelValue[totalArgs];
         var idx = 0;
-        if (e.Target is not null)
+        if (e.Target is not null && !skipTarget)
         {
             var t = Visit(e.Target, activation);
             if (t is ErrorValue or UnknownValue) { return t; }
@@ -184,7 +189,7 @@ public sealed class Evaluator
             args[idx++] = v;
         }
 
-        if (!_ast.ReferenceMap.TryGetValue(e.Id, out var refInfo) || refInfo.OverloadId is null)
+        if (!hasResolvedRef || refInfo!.OverloadId is null)
         {
             return CelValue.Error($"unresolved call: {e.Function}");
         }

@@ -1,14 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\Cel.Runtime\Cel.Runtime.csproj" />
-    <ProjectReference Include="..\Cel.Core\Cel.Core.csproj" />
-  </ItemGroup>
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <Description>Standard CEL extensions: strings, math, encoders, sets.</Description>
+    <RootNamespace>Cel.Extensions</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Cel.Core\Cel.Core.csproj" />
+    <ProjectReference Include="..\Cel.Checker\Cel.Checker.csproj" />
+    <ProjectReference Include="..\Cel.Runtime\Cel.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cel.UnitTests" />
+  </ItemGroup>
 </Project>

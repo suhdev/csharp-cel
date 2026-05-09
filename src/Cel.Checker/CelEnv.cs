@@ -23,15 +23,18 @@ public sealed class CelEnv
     public string Container { get; }
     public ImmutableDictionary<string, VariableDecl> Variables { get; }
     public ImmutableDictionary<string, FunctionDecl> Functions { get; }
+    public ImmutableArray<ICelExtension> Extensions { get; }
 
     private CelEnv(
         string container,
         ImmutableDictionary<string, VariableDecl> variables,
-        ImmutableDictionary<string, FunctionDecl> functions)
+        ImmutableDictionary<string, FunctionDecl> functions,
+        ImmutableArray<ICelExtension> extensions)
     {
         Container = container;
         Variables = variables;
         Functions = functions;
+        Extensions = extensions;
     }
 
     public static Builder NewBuilder() => new();
@@ -76,6 +79,10 @@ public sealed class CelEnv
         b.AddVariablesFrom(Variables);
         b.AddFunctionsFrom(Functions);
         b.WithoutStandardLibrary(); // base already has it
+        foreach (var ext in Extensions)
+        {
+            b.Use(ext);
+        }
         return b;
     }
 
@@ -84,6 +91,7 @@ public sealed class CelEnv
         private string _container = "";
         private readonly Dictionary<string, VariableDecl> _vars = new(StringComparer.Ordinal);
         private readonly Dictionary<string, FunctionDecl> _fns = new(StringComparer.Ordinal);
+        private readonly List<ICelExtension> _extensions = [];
         private bool _includeStdlib = true;
 
         public Builder SetContainer(string container)
@@ -126,6 +134,18 @@ public sealed class CelEnv
             return this;
         }
 
+        /// <summary>
+        /// Apply <paramref name="extension"/>'s declarations to this env. The extension is also
+        /// remembered on the built env so the runtime can later bind matching implementations.
+        /// </summary>
+        public Builder Use(ICelExtension extension)
+        {
+            ArgumentNullException.ThrowIfNull(extension);
+            extension.ConfigureEnv(this);
+            _extensions.Add(extension);
+            return this;
+        }
+
         internal Builder AddVariablesFrom(IEnumerable<KeyValuePair<string, VariableDecl>> entries)
         {
             foreach (var (k, v) in entries)
@@ -153,7 +173,8 @@ public sealed class CelEnv
             return new CelEnv(
                 _container,
                 _vars.ToImmutableDictionary(StringComparer.Ordinal),
-                _fns.ToImmutableDictionary(StringComparer.Ordinal));
+                _fns.ToImmutableDictionary(StringComparer.Ordinal),
+                [.. _extensions]);
         }
     }
 }
