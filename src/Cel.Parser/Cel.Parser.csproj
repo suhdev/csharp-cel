@@ -8,6 +8,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>CEL parser: hand-written lexer and Pratt parser, with macro expansion.</Description>
+    <RootNamespace>Cel</RootNamespace>
   </PropertyGroup>
 
 </Project>

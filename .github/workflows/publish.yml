@@ -1,0 +1,80 @@
+name: Publish to NuGet
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # Manual fallback — pick a version when running:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g. 0.1.0). Leave blank to derive from current tag.'
+        required: false
+        default: ''
+
+# A publish run is a release event — never let two race for the same tag.
+concurrency:
+  group: nuget-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Pack & push to nuget.org
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # Source linking embeds the commit hash; full history isn't needed.
+          fetch-depth: 1
+
+      - name: Resolve package version
+        id: version
+        # Tag push: strip the leading 'v' from refs/tags/v0.1.0 → 0.1.0.
+        # Manual dispatch: trust the input verbatim. Reject anything else.
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            v="${GITHUB_REF#refs/tags/v}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.version }}" ]]; then
+            v="${{ inputs.version }}"
+          else
+            echo "Cannot determine version: not a v*.*.* tag and no input.version given." >&2
+            exit 1
+          fi
+          echo "Version: $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test (sanity)
+        # Treat a failing test on a release as a hard stop — better to refuse a
+        # broken release than to publish it.
+        run: dotnet test tests/Cel.UnitTests --configuration Release --no-build
+
+      - name: Pack
+        run: dotnet pack --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output artifacts
+
+      - name: Push to nuget.org
+        # --skip-duplicate so re-running the workflow on a tag that's been
+        # partially published doesn't fail; nuget.org is the source of truth.
+        run: dotnet nuget push 'artifacts/*.nupkg' --api-key ${{ secrets.NUGET }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Upload nupkgs as run artifacts
+        # Keep the built nupkgs around for a week so they're easy to inspect
+        # if the push fails at the nuget.org side.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs-${{ steps.version.outputs.version }}
+          path: artifacts/*.nupkg
+          retention-days: 7
