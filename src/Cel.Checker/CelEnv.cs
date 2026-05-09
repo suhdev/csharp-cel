@@ -27,13 +27,21 @@ public sealed class CelEnv
     public ImmutableArray<CelMacro> Macros { get; }
     public ITypeProvider TypeProvider { get; }
 
+    /// <summary>
+    /// Naming convention applied by the runtime's reflection-based POCO adapter when mapping
+    /// CLR property/field names to CEL field names. Default is <see cref="PocoNamingConvention.PascalCase"/>,
+    /// which preserves CLR member names (with a snake-to-PascalCase fallback at lookup time).
+    /// </summary>
+    public PocoNamingConvention PocoNaming { get; }
+
     private CelEnv(
         string container,
         ImmutableDictionary<string, VariableDecl> variables,
         ImmutableDictionary<string, FunctionDecl> functions,
         ImmutableArray<ICelExtension> extensions,
         ImmutableArray<CelMacro> macros,
-        ITypeProvider typeProvider)
+        ITypeProvider typeProvider,
+        PocoNamingConvention pocoNaming)
     {
         Container = container;
         Variables = variables;
@@ -41,6 +49,7 @@ public sealed class CelEnv
         Extensions = extensions;
         Macros = macros;
         TypeProvider = typeProvider;
+        PocoNaming = pocoNaming;
     }
 
     public static Builder NewBuilder() => new();
@@ -86,6 +95,7 @@ public sealed class CelEnv
         b.AddFunctionsFrom(Functions);
         b.WithoutStandardLibrary(); // base already has it
         b.UseTypeProvider(TypeProvider);
+        b.UsePocoNaming(PocoNaming);
         foreach (var ext in Extensions)
         {
             b.Use(ext);
@@ -100,6 +110,7 @@ public sealed class CelEnv
         private readonly Dictionary<string, FunctionDecl> _fns = new(StringComparer.Ordinal);
         private readonly List<ICelExtension> _extensions = [];
         private ITypeProvider _typeProvider = NullTypeProvider.Instance;
+        private PocoNamingConvention _pocoNaming = PocoNamingConvention.PascalCase;
         private bool _includeStdlib = true;
 
         /// <summary>Register a type provider for proto / host-object support.</summary>
@@ -107,6 +118,18 @@ public sealed class CelEnv
         {
             ArgumentNullException.ThrowIfNull(provider);
             _typeProvider = provider;
+            return this;
+        }
+
+        /// <summary>
+        /// Set the naming convention applied to CLR property/field names when projecting them as
+        /// CEL fields through the reflection-based POCO adapter. Annotated members
+        /// (<c>[JsonPropertyName]</c>, <c>[JsonIgnore]</c>) are unaffected — the convention only
+        /// applies to un-annotated names.
+        /// </summary>
+        public Builder UsePocoNaming(PocoNamingConvention convention)
+        {
+            _pocoNaming = convention;
             return this;
         }
 
@@ -193,7 +216,8 @@ public sealed class CelEnv
                 _fns.ToImmutableDictionary(StringComparer.Ordinal),
                 [.. _extensions],
                 macros,
-                _typeProvider);
+                _typeProvider,
+                _pocoNaming);
         }
     }
 }

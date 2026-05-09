@@ -49,16 +49,75 @@ For `obj["k"]` index access, if `obj` is `IDictionary<,>` or `IDictionary`,
 the adapter goes through that interface; otherwise it tries property/field
 lookup the same way.
 
-## Naming
+## Naming — conventions and `[JsonPropertyName]`
 
-CEL is case-sensitive. `user.Name` and `user.name` are different selects.
-The adapter does **not** lowercase / camel-case for you — the CEL field name
-must match the CLR member name exactly.
+CEL is case-sensitive, but you have three layered ways to control how CLR
+member names map to CEL field names.
 
-If you want "CEL writes lowercase but my .NET model is PascalCase", either:
+### `[JsonPropertyName]` — explicit, per-member
 
-- expose a wrapper / DTO with the lower-cased names you want CEL to see, or
-- register an `ITypeProvider` that mediates the mapping.
+```csharp
+public sealed class User
+{
+    [JsonPropertyName("user_name")]
+    public string UserName { get; init; } = "";
+
+    [JsonIgnore]
+    public string SessionToken { get; init; } = "";
+}
+```
+
+```cel
+user.user_name        // → reads UserName
+user.UserName         // error: field hidden by attribute
+user.session_token    // error: ignored entirely
+```
+
+`[JsonPropertyName]` always wins over the convention; the original CLR
+name is no longer exposed (matching `System.Text.Json` behaviour).
+`[JsonIgnore]` removes the member entirely.
+
+### A naming convention — global, per-env
+
+```csharp
+var env = CelEnv.NewBuilder()
+    .UsePocoNaming(PocoNamingConvention.SnakeCase)
+    .Variable("user", CelTypes.Object("User"))
+    .Build();
+```
+
+| Convention | `UserName` becomes |
+|------------|--------------------|
+| `PascalCase` *(default)* | `UserName` (CLR name as-is) |
+| `CamelCase` | `userName` |
+| `SnakeCase` | `user_name` |
+| `ScreamingSnakeCase` | `USER_NAME` |
+| `KebabCase` | `user-name` |
+
+Acronym runs are handled sensibly: `HTTPMethod` becomes `httpMethod`
+(camelCase) or `http_method` (snake_case).
+
+### Default behaviour
+
+`PascalCase` is the default and preserves a useful fallback: if CEL asks
+for `user_name` but no matching member exposes that name, the adapter
+re-tries with `snake_case` → `PascalCase` translation and finds
+`UserName`. Other conventions are strict — only the transformed name is
+exposed.
+
+### Precedence
+
+For each property/field, the CEL-side name is decided as follows:
+
+1. `[JsonIgnore]` → not exposed.
+2. `[JsonPropertyName("foo")]` → exposed as `foo`.
+3. Otherwise → the configured convention's transform of the CLR name.
+
+If neither attribute is present and you're in `PascalCase` mode, the
+fallback above also applies at lookup time.
+
+If you want stricter than this — `ITypeProvider` mediates names with no
+ambiguity at all.
 
 ## Lists and maps
 

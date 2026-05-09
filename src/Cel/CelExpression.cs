@@ -60,7 +60,10 @@ public sealed class CompiledProgram
         {
             ext.ConfigureRuntime(registry.Bind);
         }
-        _evaluator = new Evaluator(ast, registry, typeProvider: env.TypeProvider);
+        var pocoAdapter = env.PocoNaming == PocoNamingConvention.PascalCase
+            ? PocoAdapter.Default
+            : new PocoAdapter(env.PocoNaming);
+        _evaluator = new Evaluator(ast, registry, pocoAdapter: pocoAdapter, typeProvider: env.TypeProvider);
     }
 
     /// <summary>Result type as inferred by the checker.</summary>
