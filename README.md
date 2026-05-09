@@ -47,11 +47,11 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 |----------|--------|
 | `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
 | `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **82–96%** |
-| `optionals`, `comparisons`, `proto2`, `proto3`, `namespace` | **57–71%** |
-| `enums`, `wrappers`, `dynamic` | **23–30%** — partial proto runtime; needs Any/Struct/Value support |
+| `proto2`, `proto3`, `comparisons`, `optionals`, `namespace` | **60–73%** |
+| `dynamic`, `enums`, `wrappers` | **28–42%** — proto runtime works for the common shapes, gaps in JSON Struct/Value, oneof, Any |
 | `bindings_ext`, `block_ext` | **0%** — `cel.bind` / `cel.@block` need parser-level macro hooks |
 | `network_ext`, `macros2`, `proto2_ext`, `type_deduction`, `unknowns` | **0–17%** — features not yet built |
-| **Total** | **1518 / 2263 ran (67%) over 2454 cases (191 skipped)** |
+| **Total** | **1597 / 2263 ran (71%) over 2454 cases (191 skipped)** |
 
 ### Known gaps
 

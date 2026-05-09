@@ -192,20 +192,27 @@ public sealed class Evaluator
 
     /// <summary>
     /// Wrap a raw CLR value as a CelValue, asking the type provider for the proper proto type
-    /// name when the result is a managed message instance.
+    /// name when the result is a managed message instance, and projecting wrapper / well-known
+    /// types to their unwrapped CEL primitives. Already-wrapped <see cref="CelValue"/> inputs
+    /// are still routed through projection so a binding holding an <see cref="ObjectValue"/>
+    /// over a wrapper proto unwraps to its primitive.
     /// </summary>
     private CelValue WrapManagedAware(object? raw)
     {
-        var v = ValueAdapter.ToCelValue(raw);
-        if (v is ObjectValue ov && _typeProvider.IsManagedInstance(ov.Native))
+        if (raw is null) { return CelValue.Null; }
+        var cel = raw is CelValue cv ? cv : ValueAdapter.ToCelValue(raw);
+        if (cel is ObjectValue ov && _typeProvider.IsManagedInstance(ov.Native))
         {
+            var projected = _typeProvider.Project(ov.Native);
+            if (projected is not null) { return projected; }
+
             var name = _typeProvider.TypeNameOf(ov.Native);
             if (name is not null && !string.Equals(name, ov.TypeName, StringComparison.Ordinal))
             {
                 return new ObjectValue(name, ov.Native);
             }
         }
-        return v;
+        return cel;
     }
 
     private static CelValue MapLookup(MapValue map, CelValue key, bool reportMissing)
@@ -458,7 +465,8 @@ public sealed class Evaluator
         // source-text name on the AST node.
         var typeName = _ast.ReferenceMap.TryGetValue(e.Id, out var refInfo) ? refInfo.Name : e.MessageName;
 
-        // Prefer the type provider for typed construction (proto messages).
+        // Prefer the type provider for typed construction (proto messages). The result goes
+        // through WrapManagedAware so wrapper types project to their unwrapped CEL primitives.
         if (_typeProvider.KnowsType(typeName))
         {
             var instance = _typeProvider.Construct(typeName, fields);
@@ -466,7 +474,7 @@ public sealed class Evaluator
             {
                 return CelValue.Error($"failed to construct {typeName}");
             }
-            return new ObjectValue(typeName, instance);
+            return WrapManagedAware(instance);
         }
 
         // Fallback: flatten to a map keyed by field name.

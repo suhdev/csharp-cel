@@ -66,6 +66,16 @@ public interface ITypeProvider
     /// needed. Returns null if the type is unknown or any field is incompatible.
     /// </summary>
     object? Construct(string typeName, IReadOnlyDictionary<string, CelValue> fields);
+
+    /// <summary>
+    /// Project a managed instance to its idiomatic CEL value. Used for proto wrapper types
+    /// where the standalone value should appear as the unwrapped primitive
+    /// (constructing <c>google.protobuf.Int32Value{value: -123}</c> yields
+    /// <see cref="IntValue"/>(-123) rather than an <see cref="ObjectValue"/> wrapping the
+    /// proto instance). Returns null if the instance has no special projection — caller
+    /// keeps it as <see cref="ObjectValue"/>.
+    /// </summary>
+    CelValue? Project(object instance);
 }
 
 /// <summary>A no-op provider used when no real provider is registered.</summary>
@@ -85,4 +95,5 @@ public sealed class NullTypeProvider : ITypeProvider
     }
     public bool HasField(object instance, string field) => false;
     public object? Construct(string typeName, IReadOnlyDictionary<string, CelValue> fields) => null;
+    public CelValue? Project(object instance) => null;
 }

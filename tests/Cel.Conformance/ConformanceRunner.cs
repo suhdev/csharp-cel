@@ -48,6 +48,27 @@ public static class ConformanceRunner
         Walk(global::Cel.Expr.Conformance.Proto3.NestedTestAllTypes.Descriptor, descriptors);
         Walk(global::Cel.Expr.Conformance.Proto2.TestAllTypes.Descriptor, descriptors);
         Walk(global::Cel.Expr.Conformance.Proto2.NestedTestAllTypes.Descriptor, descriptors);
+
+        // Well-known wrapper / utility types so `google.protobuf.Int32Value{...}` etc. resolve
+        // through the type provider rather than falling back to map construction.
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.BoolValue.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Int32Value.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Int64Value.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.UInt32Value.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.UInt64Value.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.FloatValue.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.DoubleValue.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.StringValue.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.BytesValue.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Timestamp.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Duration.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Any.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Empty.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Struct.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.Value.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.ListValue.Descriptor);
+        descriptors.Add(global::Google.Protobuf.WellKnownTypes.FieldMask.Descriptor);
+
         return new ProtoTypeProvider(descriptors);
 
         static void Walk(MessageDescriptor d, List<MessageDescriptor> sink)
@@ -253,6 +274,30 @@ public static class ConformanceRunner
         TimestampValue t => t.Value.ToString(),
         TypeValue t => $"type({t.Inner.Name})",
         NullValue => "null",
-        _ => v.ToClrObject()?.ToString() ?? "null",
+        ObjectValue o => RenderObject(o),
+        _ => SafeToString(v.ToClrObject()),
     };
+
+    private static string RenderObject(ObjectValue o)
+    {
+        if (o.Native is Google.Protobuf.IMessage msg)
+        {
+            try
+            {
+                return Google.Protobuf.JsonFormatter.Default.Format(msg);
+            }
+            catch
+            {
+                // JsonFormatter rejects e.g. an Empty-oneof Value; fall back to a stable summary.
+            }
+        }
+        return $"<{o.TypeName}>";
+    }
+
+    private static string SafeToString(object? obj)
+    {
+        if (obj is null) { return "null"; }
+        try { return obj.ToString() ?? "null"; }
+        catch (Exception ex) { return $"<{obj.GetType().Name}: {ex.Message}>"; }
+    }
 }

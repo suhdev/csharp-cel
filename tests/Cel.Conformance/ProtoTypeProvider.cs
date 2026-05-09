@@ -61,6 +61,35 @@ public sealed class ProtoTypeProvider : ITypeProvider
         instance is IMessage msg ? msg.Descriptor.FullName : null;
 
     /// <summary>
+    /// Project a managed instance to a CEL primitive when applicable. Wrapper messages
+    /// (<c>google.protobuf.{Bool,Int32,...}Value</c>), <c>Timestamp</c>, and <c>Duration</c>
+    /// all unwrap to native CEL values; arbitrary other messages keep their <see cref="ObjectValue"/>
+    /// wrapping by returning null here.
+    /// </summary>
+    public CelValue? Project(object instance)
+    {
+        if (instance is not IMessage msg)
+        {
+            return null;
+        }
+        return msg switch
+        {
+            PbBoolValue x => CelValue.Of(x.Value),
+            PbInt32Value x => CelValue.Of((long)x.Value),
+            PbInt64Value x => CelValue.Of(x.Value),
+            PbUInt32Value x => CelValue.Of((ulong)x.Value),
+            PbUInt64Value x => CelValue.Of(x.Value),
+            PbFloatValue x => CelValue.Of((double)x.Value),
+            PbDoubleValue x => CelValue.Of(x.Value),
+            PbStringValue x => CelValue.Of(x.Value),
+            PbBytesValue x => CelValue.Of(System.Collections.Immutable.ImmutableArray.Create(x.Value.ToByteArray())),
+            PbTimestamp ts => CelValue.Of(CelTimestamp.FromDateTimeOffset(ts.ToDateTimeOffset())),
+            PbDuration d => CelValue.Of(new CelDuration(d.Seconds * CelDuration.NanosPerSecond + d.Nanos)),
+            _ => null,
+        };
+    }
+
+    /// <summary>
     /// Build an <see cref="IMessage"/> instance from a textproto body. Used by the conformance
     /// harness to parse expected-value proto messages out of <c>object_value { ... }</c>
     /// fragments.
@@ -104,30 +133,84 @@ public sealed class ProtoTypeProvider : ITypeProvider
             return;
         }
         try { fd.Accessor.SetValue(msg, cv); }
-        catch { /* incompatible value, leave default */ }
+        catch
+        {
+            // Incompatible value or unsupported field shape — leave at default.
+        }
     }
 
-    private object? ConvertTextProto(FieldDescriptor fd, TextProto.TextProtoValue v) => (fd.FieldType, v) switch
+    private object? ConvertTextProto(FieldDescriptor fd, TextProto.TextProtoValue v)
     {
-        (FieldType.Bool, TextProto.TextProtoBool b) => b.Value,
-        (FieldType.Int32 or FieldType.SInt32 or FieldType.SFixed32, TextProto.TextProtoInt i) => (int)i.Value,
-        (FieldType.Int64 or FieldType.SInt64 or FieldType.SFixed64, TextProto.TextProtoInt i) => i.Value,
-        (FieldType.UInt32 or FieldType.Fixed32, TextProto.TextProtoInt i) when i.Value >= 0 => (uint)i.Value,
-        (FieldType.UInt64 or FieldType.Fixed64, TextProto.TextProtoInt i) when i.Value >= 0 => (ulong)i.Value,
-        (FieldType.UInt32 or FieldType.Fixed32, TextProto.TextProtoUint u) => (uint)u.Value,
-        (FieldType.UInt64 or FieldType.Fixed64, TextProto.TextProtoUint u) => u.Value,
-        (FieldType.Float, TextProto.TextProtoDouble d) => (float)d.Value,
-        (FieldType.Float, TextProto.TextProtoInt i) => (float)i.Value,
-        (FieldType.Double, TextProto.TextProtoDouble d) => d.Value,
-        (FieldType.Double, TextProto.TextProtoInt i) => (double)i.Value,
-        (FieldType.String, TextProto.TextProtoString s) => s.Decoded,
-        (FieldType.Bytes, TextProto.TextProtoString s) => ByteString.CopyFrom(EncodeBytes(s.Value)),
-        (FieldType.Enum, TextProto.TextProtoIdent id) => fd.EnumType.FindValueByName(id.Value)?.Number ?? 0,
-        (FieldType.Enum, TextProto.TextProtoInt i) => (int)i.Value,
-        (FieldType.Message, TextProto.TextProtoMessageValue inner) =>
-            BuildFromTextProto(fd.MessageType.FullName, inner.Message),
-        _ => null,
+        // Wrapper-typed message fields are codegen'd as nullable primitives, so a textproto
+        // value like `single_int32_wrapper: 432` should produce a boxed int rather than a
+        // Int32Value instance.
+        if (fd.FieldType == FieldType.Message && fd.MessageType is { } mt && IsWrapperType(mt.FullName))
+        {
+            return ConvertWrapperPrimitive(mt.FullName, v);
+        }
+        return (fd.FieldType, v) switch
+        {
+            (FieldType.Bool, TextProto.TextProtoBool b) => b.Value,
+            (FieldType.Int32 or FieldType.SInt32 or FieldType.SFixed32, TextProto.TextProtoInt i) => (int)i.Value,
+            (FieldType.Int64 or FieldType.SInt64 or FieldType.SFixed64, TextProto.TextProtoInt i) => i.Value,
+            (FieldType.UInt32 or FieldType.Fixed32, TextProto.TextProtoInt i) when i.Value >= 0 => (uint)i.Value,
+            (FieldType.UInt64 or FieldType.Fixed64, TextProto.TextProtoInt i) when i.Value >= 0 => (ulong)i.Value,
+            (FieldType.UInt32 or FieldType.Fixed32, TextProto.TextProtoUint u) => (uint)u.Value,
+            (FieldType.UInt64 or FieldType.Fixed64, TextProto.TextProtoUint u) => u.Value,
+            (FieldType.Float, TextProto.TextProtoDouble d) => (float)d.Value,
+            (FieldType.Float, TextProto.TextProtoInt i) => (float)i.Value,
+            (FieldType.Double, TextProto.TextProtoDouble d) => d.Value,
+            (FieldType.Double, TextProto.TextProtoInt i) => (double)i.Value,
+            (FieldType.String, TextProto.TextProtoString s) => s.Decoded,
+            (FieldType.Bytes, TextProto.TextProtoString s) => ByteString.CopyFrom(EncodeBytes(s.Value)),
+            (FieldType.Enum, TextProto.TextProtoIdent id) => fd.EnumType.FindValueByName(id.Value)?.Number ?? 0,
+            (FieldType.Enum, TextProto.TextProtoInt i) => (int)i.Value,
+            (FieldType.Message, TextProto.TextProtoMessageValue inner) =>
+                BuildFromTextProto(fd.MessageType.FullName, inner.Message),
+            _ => null,
+        };
+    }
+
+    private static bool IsWrapperType(string typeName) => typeName switch
+    {
+        "google.protobuf.BoolValue" or "google.protobuf.Int32Value" or "google.protobuf.Int64Value"
+            or "google.protobuf.UInt32Value" or "google.protobuf.UInt64Value"
+            or "google.protobuf.FloatValue" or "google.protobuf.DoubleValue"
+            or "google.protobuf.StringValue" or "google.protobuf.BytesValue" => true,
+        _ => false,
     };
+
+    private static object? ConvertWrapperPrimitive(string typeName, TextProto.TextProtoValue v)
+    {
+        // textproto for `single_int32_wrapper { value: 432 }` arrives as a TextProtoMessageValue;
+        // unwrap to its inner `value` field before matching the typed primitive shapes.
+        if (v is TextProto.TextProtoMessageValue mv)
+        {
+            var inner = mv.Message.FirstOrNull("value")?.Value;
+            if (inner is null)
+            {
+                return null;
+            }
+            v = inner;
+        }
+        return (typeName, v) switch
+        {
+            ("google.protobuf.BoolValue", TextProto.TextProtoBool b) => b.Value,
+            ("google.protobuf.Int32Value", TextProto.TextProtoInt i) => (int)i.Value,
+            ("google.protobuf.Int64Value", TextProto.TextProtoInt i) => i.Value,
+            ("google.protobuf.UInt32Value", TextProto.TextProtoUint u) => (uint)u.Value,
+            ("google.protobuf.UInt32Value", TextProto.TextProtoInt i) when i.Value >= 0 => (uint)i.Value,
+            ("google.protobuf.UInt64Value", TextProto.TextProtoUint u) => u.Value,
+            ("google.protobuf.UInt64Value", TextProto.TextProtoInt i) when i.Value >= 0 => (ulong)i.Value,
+            ("google.protobuf.FloatValue", TextProto.TextProtoDouble d) => (float)d.Value,
+            ("google.protobuf.FloatValue", TextProto.TextProtoInt i) => (float)i.Value,
+            ("google.protobuf.DoubleValue", TextProto.TextProtoDouble d) => d.Value,
+            ("google.protobuf.DoubleValue", TextProto.TextProtoInt i) => (double)i.Value,
+            ("google.protobuf.StringValue", TextProto.TextProtoString s) => s.Decoded,
+            ("google.protobuf.BytesValue", TextProto.TextProtoString s) => ByteString.CopyFrom(EncodeBytes(s.Value)),
+            _ => null,
+        };
+    }
 
     private static byte[] EncodeBytes(string raw)
     {
@@ -188,54 +271,22 @@ public sealed class ProtoTypeProvider : ITypeProvider
     }
 
     /// <summary>
-    /// Project a proto field value into the form CEL operates on:
-    /// <list type="bullet">
-    /// <item>wrapper messages → their inner CLR primitive (or null when unset)</item>
-    /// <item>repeated / map fields → the underlying <see cref="IList"/> / <see cref="IDictionary"/></item>
-    /// <item>well-known types (Timestamp, Duration) → CEL value structs</item>
-    /// <item>enums → their numeric int value</item>
-    /// <item>other messages → the message itself (still <see cref="IMessage"/>)</item>
-    /// </list>
+    /// Project a proto field value to a form the rest of the runtime operates on.
+    /// Repeated / map fields pass through as <see cref="IList"/> / <see cref="IDictionary"/>;
+    /// enums become their numeric int value; message fields stay as <see cref="IMessage"/>
+    /// instances and are projected to wrappers / well-known types lazily by
+    /// <see cref="Project"/> in the evaluator.
     /// </summary>
     private static object? ProjectValue(FieldDescriptor fd, object? raw)
     {
-        if (raw is null)
-        {
-            return null;
-        }
-        if (fd.IsMap || fd.IsRepeated)
-        {
-            // Collections pass through; ValueAdapter wraps each element via the same projection
-            // would be ideal, but for simplicity we trust IList/IDictionary handling.
-            return raw;
-        }
+        if (raw is null) { return null; }
+        if (fd.IsMap || fd.IsRepeated) { return raw; }
         if (fd.FieldType == FieldType.Enum)
         {
-            // Generated proto enums are .NET enums; cast to int for CEL.
             return Convert.ToInt64(raw, System.Globalization.CultureInfo.InvariantCulture);
-        }
-        if (fd.FieldType == FieldType.Message && raw is IMessage subMsg)
-        {
-            return ProjectMessage(subMsg);
         }
         return raw;
     }
-
-    private static object? ProjectMessage(IMessage msg) => msg switch
-    {
-        PbBoolValue x => x.Value,
-        PbInt32Value x => (long)x.Value,
-        PbInt64Value x => x.Value,
-        PbUInt32Value x => (ulong)x.Value,
-        PbUInt64Value x => x.Value,
-        PbFloatValue x => (double)x.Value,
-        PbDoubleValue x => x.Value,
-        PbStringValue x => x.Value,
-        PbBytesValue x => x.Value.ToByteArray(),
-        PbTimestamp ts => CelTimestamp.FromDateTimeOffset(ts.ToDateTimeOffset()),
-        PbDuration d => new CelDuration(d.Seconds * CelDuration.NanosPerSecond + d.Nanos),
-        _ => msg,
-    };
 
     private static bool IsDefaultScalar(FieldDescriptor fd, object? v) => fd.FieldType switch
     {
@@ -302,11 +353,21 @@ public sealed class ProtoTypeProvider : ITypeProvider
                 }
                 foreach (var elem in lv.Elements)
                 {
-                    list.Add(ToClrForElement(fd, elem));
+                    var converted = ToClrForElement(fd, elem);
+                    if (converted is null && elem is not NullValue)
+                    {
+                        return false;
+                    }
+                    list.Add(converted);
                 }
                 return true;
             }
-            fd.Accessor.SetValue(msg, ToClrForElement(fd, value));
+            var clrValue = ToClrForElement(fd, value);
+            if (clrValue is null && fd.FieldType != FieldType.Message && value is not NullValue)
+            {
+                return false;
+            }
+            fd.Accessor.SetValue(msg, clrValue);
             return true;
         }
         catch
@@ -348,16 +409,19 @@ public sealed class ProtoTypeProvider : ITypeProvider
         (FieldType.String, StringValue s) => s.Value,
         (FieldType.Bytes, BytesValue b) => ByteString.CopyFrom(b.Value.ToArray()),
         (FieldType.Enum, IntValue i) => (int)i.Value,
-        (FieldType.Message, _) => MessageOrWrapperFor(fd, value),
+        (FieldType.Message, _) => MessageOrWrapperFor(fd, value)!,
         (_, NullValue) => null,
         _ => Cel.Runtime.ValueAdapter.ToClr(value),
     };
 
     /// <summary>
-    /// Build a message value for a message-typed field. Recognises wrapper types so that a
-    /// scalar literal assigned to a wrapper field gets boxed correctly.
+    /// Convert a CEL value to the CLR shape that the field's <c>SetValue</c> accessor expects.
+    /// For wrapper-typed fields (BoolValue, Int32Value, ...) Google.Protobuf C# generates
+    /// the property as a nullable primitive — passing the unwrapped primitive matches that
+    /// shape. For other message types we either pass the existing IMessage or build the
+    /// well-known type instance from a CEL value.
     /// </summary>
-    private static IMessage? MessageOrWrapperFor(FieldDescriptor fd, CelValue value)
+    private static object? MessageOrWrapperFor(FieldDescriptor fd, CelValue value)
     {
         if (value is NullValue)
         {
@@ -369,17 +433,33 @@ public sealed class ProtoTypeProvider : ITypeProvider
         }
         return fd.MessageType.FullName switch
         {
-            "google.protobuf.BoolValue" => value is BoolValue b ? new PbBoolValue { Value = b.Value } : null,
-            "google.protobuf.Int32Value" => value is IntValue i ? new PbInt32Value { Value = (int)i.Value } : null,
-            "google.protobuf.Int64Value" => value is IntValue i ? new PbInt64Value { Value = i.Value } : null,
-            "google.protobuf.UInt32Value" => value is UintValue u ? new PbUInt32Value { Value = (uint)u.Value } : null,
-            "google.protobuf.UInt64Value" => value is UintValue u ? new PbUInt64Value { Value = u.Value } : null,
-            "google.protobuf.FloatValue" => value is DoubleValue d ? new PbFloatValue { Value = (float)d.Value } : null,
-            "google.protobuf.DoubleValue" => value is DoubleValue d ? new PbDoubleValue { Value = d.Value } : null,
-            "google.protobuf.StringValue" => value is StringValue s ? new PbStringValue { Value = s.Value } : null,
-            "google.protobuf.BytesValue" => value is BytesValue b ? new PbBytesValue { Value = ByteString.CopyFrom(b.Value.ToArray()) } : null,
-            "google.protobuf.Timestamp" => value is TimestampValue t ? PbTimestamp.FromDateTimeOffset(t.Value.ToDateTimeOffset()) : null,
-            "google.protobuf.Duration" => value is DurationValue d ? PbDuration.FromTimeSpan(d.Value.ToTimeSpan()) : null,
+            // Generated as nullable primitives — pass the unwrapped CLR value directly.
+            "google.protobuf.BoolValue" => value is BoolValue b ? (object?)b.Value : null,
+            "google.protobuf.Int32Value" => value is IntValue i ? (int)i.Value : null,
+            "google.protobuf.Int64Value" => value is IntValue i ? i.Value : null,
+            "google.protobuf.UInt32Value" => value switch
+            {
+                UintValue u => (uint)u.Value,
+                IntValue i when i.Value >= 0 => (uint)i.Value,
+                _ => null,
+            },
+            "google.protobuf.UInt64Value" => value switch
+            {
+                UintValue u => u.Value,
+                IntValue i when i.Value >= 0 => (ulong)i.Value,
+                _ => null,
+            },
+            "google.protobuf.FloatValue" => value is DoubleValue d ? (float)d.Value : null,
+            "google.protobuf.DoubleValue" => value is DoubleValue d ? d.Value : null,
+            "google.protobuf.StringValue" => value is StringValue s ? s.Value : null,
+            "google.protobuf.BytesValue" => value is BytesValue b ? ByteString.CopyFrom(b.Value.ToArray()) : null,
+            // Timestamp / Duration kept as IMessage by codegen.
+            "google.protobuf.Timestamp" => value is TimestampValue t
+                ? PbTimestamp.FromDateTimeOffset(t.Value.ToDateTimeOffset())
+                : null,
+            "google.protobuf.Duration" => value is DurationValue d
+                ? PbDuration.FromTimeSpan(d.Value.ToTimeSpan())
+                : null,
             _ => null,
         };
     }
