@@ -3,7 +3,11 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://cel-csharp.dev',
+  // GitHub Pages: site is the user/org domain, base is the repo path. With
+  // `<owner>.github.io/<repo>/` as the published URL, every internal link in
+  // the built site needs the base prefix — Starlight handles this for you.
+  site: 'https://suhdev.github.io',
+  base: '/csharp-cel/',
   integrations: [
     starlight({
       title: 'CEL for .NET',

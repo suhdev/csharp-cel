@@ -11,6 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# Permissions needed by the deploy job below; default read for everything else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   dotnet:
     name: .NET — build, unit, conformance
@@ -83,9 +89,23 @@ jobs:
       - name: Build site
         run: npm run build
 
-      - name: Upload built site
-        uses: actions/upload-artifact@v4
+      - name: Upload Pages artifact
+        # Use the Pages-specific uploader so the deploy job below can publish it.
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: docs-dist
           path: docs/dist
-          retention-days: 7
+
+  deploy:
+    name: Docs — deploy to GitHub Pages
+    needs: docs
+    # Only deploy on push to main, never from PRs (which can't access Pages anyway).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
