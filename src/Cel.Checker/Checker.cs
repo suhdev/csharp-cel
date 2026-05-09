@@ -137,6 +137,23 @@ public sealed class Checker
 
     private CelType VisitSelect(SelectExpr e)
     {
+        // If the entire select chain flattens to a known qualified variable name, prefer the
+        // variable over a literal field-by-field walk. Mirrors cel-go's "namespace lookup wins
+        // over receiver-with-select" rule. Skip for has(...) — that semantics is field presence.
+        if (!e.TestOnly)
+        {
+            var qualified = TryFlattenSelectChainToVar(e);
+            if (qualified is not null)
+            {
+                var v = _env.ResolveVariable(qualified);
+                if (v is not null)
+                {
+                    _refs[e.Id] = new ResolvedReference(v.Name);
+                    return v.Type;
+                }
+            }
+        }
+
         var operandType = Visit(e.Operand);
 
         if (e.TestOnly)
@@ -412,6 +429,35 @@ public sealed class Checker
             }
         }
         return (null, CelTypes.Error);
+    }
+
+    /// <summary>
+    /// Flatten a SelectExpr chain to a dotted variable name. Returns null if any node has a
+    /// test-only marker or the chain doesn't bottom out at an identifier.
+    /// </summary>
+    private static string? TryFlattenSelectChainToVar(SelectExpr e)
+    {
+        if (e.TestOnly) { return null; }
+        var parts = new Stack<string>();
+        parts.Push(e.Field);
+        var cur = e.Operand;
+        while (cur is SelectExpr s)
+        {
+            if (s.TestOnly) { return null; }
+            parts.Push(s.Field);
+            cur = s.Operand;
+        }
+        if (cur is IdentifierExpr ident)
+        {
+            var name = ident.Name;
+            if (name.Length > 0 && name[0] == '.')
+            {
+                name = name[1..];
+            }
+            parts.Push(name);
+            return string.Join('.', parts);
+        }
+        return null;
     }
 
     /// <summary>

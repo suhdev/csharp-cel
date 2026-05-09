@@ -76,27 +76,47 @@ public sealed class Evaluator
 
     private CelValue VisitIdentifier(IdentifierExpr e, IActivation activation)
     {
-        // Strip leading-dot marker the parser inserted for absolute references; the activation
-        // never knows about it.
         var name = e.Name.Length > 0 && e.Name[0] == '.' ? e.Name[1..] : e.Name;
+
+        // The checker may have resolved this identifier to a qualified name (e.g. `y` in
+        // container `x` resolved to `x.y`). Use that name first so the activation key matches
+        // the declaration the type checker bound to.
+        if (_ast.ReferenceMap.TryGetValue(e.Id, out var refInfo)
+            && !string.Equals(refInfo.Name, name, StringComparison.Ordinal))
+        {
+            if (activation.TryResolve(refInfo.Name, out var rawQualified))
+            {
+                return ValueAdapter.ToCelValue(rawQualified);
+            }
+        }
+
         if (activation.TryResolve(name, out var raw))
         {
             return ValueAdapter.ToCelValue(raw);
         }
-        // Try the qualified name from the checker's reference map (variables resolved via
-        // namespace candidates).
-        if (_ast.ReferenceMap.TryGetValue(e.Id, out var refInfo) && refInfo.Name != name)
-        {
-            if (activation.TryResolve(refInfo.Name, out raw))
-            {
-                return ValueAdapter.ToCelValue(raw);
-            }
-        }
         return CelValue.Error($"no such variable: {e.Name}");
+    }
+
+    private static CelValue VisitSelectAsQualifiedVariable(string qualifiedName, IActivation activation)
+    {
+        if (activation.TryResolve(qualifiedName, out var raw))
+        {
+            return ValueAdapter.ToCelValue(raw);
+        }
+        return CelValue.Error($"no such variable: {qualifiedName}");
     }
 
     private CelValue VisitSelect(SelectExpr e, IActivation activation)
     {
+        // The checker may have collapsed the entire ident chain to a qualified variable name
+        // (e.g. `x.y` resolves to a declared variable named "x.y"). The reference map is the
+        // source of truth.
+        if (_ast.ReferenceMap.TryGetValue(e.Id, out var refInfo)
+            && refInfo.OverloadId is null && !e.TestOnly)
+        {
+            return VisitSelectAsQualifiedVariable(refInfo.Name, activation);
+        }
+
         var operand = Visit(e.Operand, activation);
         if (operand is ErrorValue or UnknownValue)
         {
