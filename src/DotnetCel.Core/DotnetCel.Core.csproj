@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Common Expression Language: AST, type system, value model, diagnostics. Foundation library with no external dependencies.</Description>
+    <RootNamespace>DotnetCel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetCel.Parser" />
+    <InternalsVisibleTo Include="DotnetCel.Checker" />
+    <InternalsVisibleTo Include="DotnetCel.Runtime" />
+    <InternalsVisibleTo Include="DotnetCel.Extensions" />
+    <InternalsVisibleTo Include="DotnetCel" />
+    <InternalsVisibleTo Include="DotnetCel.UnitTests" />
+  </ItemGroup>
+</Project>

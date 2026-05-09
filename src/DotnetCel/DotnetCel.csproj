@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>CEL public façade: Compile + CompiledProgram for end-user expression evaluation.</Description>
+    <RootNamespace>DotnetCel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCel.Core\DotnetCel.Core.csproj" />
+    <ProjectReference Include="..\DotnetCel.Parser\DotnetCel.Parser.csproj" />
+    <ProjectReference Include="..\DotnetCel.Checker\DotnetCel.Checker.csproj" />
+    <ProjectReference Include="..\DotnetCel.Runtime\DotnetCel.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetCel.UnitTests" />
+  </ItemGroup>
+</Project>

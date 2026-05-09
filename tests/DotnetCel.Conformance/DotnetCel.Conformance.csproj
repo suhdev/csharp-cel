@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <CelProtoRoot>$(MSBuildThisFileDirectory)..\..\proto</CelProtoRoot>
+    <RootNamespace>DotnetCel.Conformance</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotnetCel\DotnetCel.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Extensions\DotnetCel.Extensions.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Runtime\DotnetCel.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Core\DotnetCel.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Compile cel-spec test message protos from the in-repo `proto/` tree. ProtoRoot is the
+    top-level proto/ so `import "google/protobuf/..."` references resolve via Grpc.Tools'
+    bundled well-known types and `import "cel/expr/..."` references resolve to the sibling
+    files we include.
+  -->
+  <ItemGroup>
+    <Protobuf Include="$(CelProtoRoot)\cel\expr\conformance\proto3\test_all_types.proto"
+              ProtoRoot="$(CelProtoRoot)" GrpcServices="None" />
+    <Protobuf Include="$(CelProtoRoot)\cel\expr\conformance\proto2\test_all_types.proto"
+              ProtoRoot="$(CelProtoRoot)" GrpcServices="None" />
+    <Protobuf Include="$(CelProtoRoot)\cel\expr\conformance\proto2\test_all_types_extensions.proto"
+              ProtoRoot="$(CelProtoRoot)" GrpcServices="None" />
+  </ItemGroup>
+</Project>

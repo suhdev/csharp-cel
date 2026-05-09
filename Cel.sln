@@ -5,23 +5,23 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.Core", "src\Cel.Core\Cel.Core.csproj", "{33C880FF-AD20-4886-90D1-E54059A73ACC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.Core", "src\DotnetCel.Core\DotnetCel.Core.csproj", "{33C880FF-AD20-4886-90D1-E54059A73ACC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.Parser", "src\Cel.Parser\Cel.Parser.csproj", "{38288A34-B6AC-42CA-B265-53DFBAD5A6BA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.Parser", "src\DotnetCel.Parser\DotnetCel.Parser.csproj", "{38288A34-B6AC-42CA-B265-53DFBAD5A6BA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.Checker", "src\Cel.Checker\Cel.Checker.csproj", "{2A625BFB-AFA9-458B-AE67-B7FEB3BF9AF2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.Checker", "src\DotnetCel.Checker\DotnetCel.Checker.csproj", "{2A625BFB-AFA9-458B-AE67-B7FEB3BF9AF2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.Runtime", "src\Cel.Runtime\Cel.Runtime.csproj", "{FE45C715-60C6-41CB-8BFA-29A53A83AB3A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.Runtime", "src\DotnetCel.Runtime\DotnetCel.Runtime.csproj", "{FE45C715-60C6-41CB-8BFA-29A53A83AB3A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.Extensions", "src\Cel.Extensions\Cel.Extensions.csproj", "{51561318-D6E0-46D7-BF85-94E6246078B5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.Extensions", "src\DotnetCel.Extensions\DotnetCel.Extensions.csproj", "{51561318-D6E0-46D7-BF85-94E6246078B5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel", "src\Cel\Cel.csproj", "{6075680C-2F9C-45D5-9BEA-240091E315F7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel", "src\DotnetCel\DotnetCel.csproj", "{6075680C-2F9C-45D5-9BEA-240091E315F7}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.UnitTests", "tests\Cel.UnitTests\Cel.UnitTests.csproj", "{B6B53FBA-16F2-4E3C-A3C2-0C9E77D3D942}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.UnitTests", "tests\DotnetCel.UnitTests\DotnetCel.UnitTests.csproj", "{B6B53FBA-16F2-4E3C-A3C2-0C9E77D3D942}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cel.Conformance", "tests\Cel.Conformance\Cel.Conformance.csproj", "{4D706B08-661A-46A8-8610-5C8CDD676EE6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCel.Conformance", "tests\DotnetCel.Conformance\DotnetCel.Conformance.csproj", "{4D706B08-661A-46A8-8610-5C8CDD676EE6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

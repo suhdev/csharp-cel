@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>CEL evaluator: tree-walking interpreter, activations, POCO adapter, stdlib bindings.</Description>
+    <RootNamespace>DotnetCel</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCel.Core\DotnetCel.Core.csproj" />
+    <ProjectReference Include="..\DotnetCel.Checker\DotnetCel.Checker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetCel.Extensions" />
+    <InternalsVisibleTo Include="DotnetCel" />
+    <InternalsVisibleTo Include="DotnetCel.UnitTests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>DotnetCel.UnitTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotnetCel.Core\DotnetCel.Core.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Parser\DotnetCel.Parser.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Checker\DotnetCel.Checker.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Runtime\DotnetCel.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel\DotnetCel.csproj" />
+    <ProjectReference Include="..\..\src\DotnetCel.Extensions\DotnetCel.Extensions.csproj" />
+  </ItemGroup>
+</Project>

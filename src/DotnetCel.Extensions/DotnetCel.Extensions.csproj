@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Standard CEL extensions: strings, math, encoders, sets.</Description>
+    <RootNamespace>DotnetCel.Extensions</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DotnetCel.Core\DotnetCel.Core.csproj" />
+    <ProjectReference Include="..\DotnetCel.Checker\DotnetCel.Checker.csproj" />
+    <ProjectReference Include="..\DotnetCel.Runtime\DotnetCel.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetCel.UnitTests" />
+  </ItemGroup>
+</Project>
