@@ -14,29 +14,26 @@ project layout is five small assemblies with no required external dependencies.
 
 ## NuGet packages
 
-The runtime ships as five packages plus an optional extensions bundle.
-The `Cel` namespace inside your code is unchanged; the package IDs are
-prefixed with `CelDotNet` to disambiguate on nuget.org:
+The runtime ships as five packages plus an optional extensions bundle:
 
 | Package | What it contains |
 |---------|------------------|
-| `CelDotNet` | Public façade: `CelExpression`, `CompiledProgram`. Depends on the next four. |
-| `CelDotNet.Core` | AST, type system, value model, `ITypeProvider` / `ICelExtension` interfaces. |
-| `CelDotNet.Parser` | Lexer + Pratt parser, macro expansion. |
-| `CelDotNet.Checker` | Type checker, declarations, overload resolution, `CelEnv`. |
-| `CelDotNet.Runtime` | Tree-walking evaluator, activations, POCO adapter, stdlib. |
-| `CelDotNet.Extensions` | Optional: `strings`, `math`, `encoders`, `sets`, `optionals`, `bindings`, `network`, `block`. |
+| `Cel` | Public façade: `CelExpression`, `CompiledProgram`. Depends on the next four. |
+| `Cel.Core` | AST, type system, value model, `ITypeProvider` / `ICelExtension` interfaces. |
+| `Cel.Parser` | Lexer + Pratt parser, macro expansion. |
+| `Cel.Checker` | Type checker, declarations, overload resolution, `CelEnv`. |
+| `Cel.Runtime` | Tree-walking evaluator, activations, POCO adapter, stdlib. |
+| `Cel.Extensions` | Optional: `strings`, `math`, `encoders`, `sets`, `optionals`, `bindings`, `network`, `block`. |
 
 Install via the .NET CLI:
 
 ```sh
-dotnet add package CelDotNet
-dotnet add package CelDotNet.Extensions   # optional
+dotnet add package Cel
+dotnet add package Cel.Extensions   # optional
 ```
 
-`CelDotNet` transitively pulls in `CelDotNet.Core`, `CelDotNet.Parser`,
-`CelDotNet.Checker`, and `CelDotNet.Runtime`, so most projects only need
-the first one.
+`Cel` transitively pulls in `Cel.Core`, `Cel.Parser`, `Cel.Checker`, and
+`Cel.Runtime`, so most projects only need the first one.
 
 ## Project file
 
@@ -50,8 +47,8 @@ If you prefer hand-editing your `.csproj`:
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CelDotNet" Version="0.1.*" />
-    <PackageReference Include="CelDotNet.Extensions" Version="0.1.*" />
+    <PackageReference Include="Cel" Version="0.1.*" />
+    <PackageReference Include="Cel.Extensions" Version="0.1.*" />
   </ItemGroup>
 </Project>
 ```

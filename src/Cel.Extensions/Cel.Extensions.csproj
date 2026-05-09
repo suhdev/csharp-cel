@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <PackageId>CelDotNet.Extensions</PackageId>
-    <Description>Standard CEL extensions: strings, math, encoders, sets, optionals, bindings, network, block.</Description>
+    <Description>Standard CEL extensions: strings, math, encoders, sets.</Description>
     <RootNamespace>Cel.Extensions</RootNamespace>
   </PropertyGroup>
 

@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <PackageId>CelDotNet</PackageId>
     <Description>CEL public façade: Compile + CompiledProgram for end-user expression evaluation.</Description>
     <RootNamespace>Cel</RootNamespace>
   </PropertyGroup>

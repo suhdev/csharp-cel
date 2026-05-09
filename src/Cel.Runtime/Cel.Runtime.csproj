@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <PackageId>CelDotNet.Runtime</PackageId>
     <Description>CEL evaluator: tree-walking interpreter, activations, POCO adapter, stdlib bindings.</Description>
     <RootNamespace>Cel</RootNamespace>
   </PropertyGroup>
