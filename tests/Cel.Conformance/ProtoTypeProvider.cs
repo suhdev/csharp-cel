@@ -93,6 +93,106 @@ public sealed class ProtoTypeProvider : ITypeProvider
         instance is IMessage msg ? msg.Descriptor.FullName : null;
 
     /// <summary>
+    /// CEL-flavoured proto message equality. Differs from the auto-generated <see cref="IMessage.Equals(object?)"/>
+    /// in one important way: floating-point fields containing NaN make the whole comparison
+    /// false (NaN propagates through messages per CEL spec, where the auto-generated Equals
+    /// would use bit-equality and treat NaN == NaN as true).
+    /// </summary>
+    public bool? AreEqual(object a, object b)
+    {
+        if (a is not IMessage am || b is not IMessage bm)
+        {
+            return null;
+        }
+        if (!ReferenceEquals(am.Descriptor, bm.Descriptor))
+        {
+            return false;
+        }
+        return MessagesEqual(am, bm);
+    }
+
+    private static bool MessagesEqual(IMessage a, IMessage b)
+    {
+        foreach (var fd in a.Descriptor.Fields.InFieldNumberOrder())
+        {
+            var av = fd.Accessor.GetValue(a);
+            var bv = fd.Accessor.GetValue(b);
+            if (!FieldsEqual(fd, av, bv))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool FieldsEqual(FieldDescriptor fd, object? av, object? bv)
+    {
+        if (av is null && bv is null)
+        {
+            return true;
+        }
+        if (av is null || bv is null)
+        {
+            return false;
+        }
+        if (fd.IsMap)
+        {
+            return MapFieldsEqual((IDictionary)av, (IDictionary)bv,
+                fd.MessageType.FindFieldByNumber(2));
+        }
+        if (fd.IsRepeated)
+        {
+            return RepeatedFieldsEqual((IList)av, (IList)bv, fd);
+        }
+        if (fd.FieldType == FieldType.Double)
+        {
+            var ad = (double)av;
+            var bd = (double)bv;
+            if (double.IsNaN(ad) || double.IsNaN(bd))
+            {
+                return false;
+            }
+            return ad == bd;
+        }
+        if (fd.FieldType == FieldType.Float)
+        {
+            var ad = (float)av;
+            var bd = (float)bv;
+            if (float.IsNaN(ad) || float.IsNaN(bd))
+            {
+                return false;
+            }
+            return ad == bd;
+        }
+        if (fd.FieldType == FieldType.Message && av is IMessage am && bv is IMessage bm)
+        {
+            return ReferenceEquals(am.Descriptor, bm.Descriptor) && MessagesEqual(am, bm);
+        }
+        return av.Equals(bv);
+    }
+
+    private static bool RepeatedFieldsEqual(IList a, IList b, FieldDescriptor element)
+    {
+        if (a.Count != b.Count) { return false; }
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!FieldsEqual(element, a[i], b[i])) { return false; }
+        }
+        return true;
+    }
+
+    private static bool MapFieldsEqual(IDictionary a, IDictionary b, FieldDescriptor valueField)
+    {
+        if (a.Count != b.Count) { return false; }
+        foreach (DictionaryEntry e in a)
+        {
+            if (!b.Contains(e.Key)) { return false; }
+            if (!FieldsEqual(valueField, e.Value, b[e.Key])) { return false; }
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Project a managed instance to a CEL primitive when applicable. Wrapper messages
     /// (<c>google.protobuf.{Bool,Int32,...}Value</c>), <c>Timestamp</c>, <c>Duration</c>,
     /// <c>Any</c> (unpacked recursively), and <c>Value</c> (oneof case dispatched) all
@@ -276,7 +376,20 @@ public sealed class ProtoTypeProvider : ITypeProvider
             var inner = mv.Message.FirstOrNull("value")?.Value;
             if (inner is null)
             {
-                return null;
+                // Empty body — the wrapper is set to its default (zero/empty) value.
+                return typeName switch
+                {
+                    "google.protobuf.BoolValue" => (object)false,
+                    "google.protobuf.Int32Value" => 0,
+                    "google.protobuf.Int64Value" => 0L,
+                    "google.protobuf.UInt32Value" => 0u,
+                    "google.protobuf.UInt64Value" => 0ul,
+                    "google.protobuf.FloatValue" => 0f,
+                    "google.protobuf.DoubleValue" => 0.0,
+                    "google.protobuf.StringValue" => "",
+                    "google.protobuf.BytesValue" => ByteString.Empty,
+                    _ => null,
+                };
             }
             v = inner;
         }
@@ -362,11 +475,20 @@ public sealed class ProtoTypeProvider : ITypeProvider
     /// Repeated / map fields pass through as <see cref="IList"/> / <see cref="IDictionary"/>;
     /// enums become their numeric int value; message fields stay as <see cref="IMessage"/>
     /// instances and are projected to wrappers / well-known types lazily by
-    /// <see cref="Project"/> in the evaluator.
+    /// <see cref="Project"/> in the evaluator. An unset non-wrapper message field returns a
+    /// default-constructed empty message so further field access yields zero values per CEL.
     /// </summary>
     private static object? ProjectValue(FieldDescriptor fd, object? raw)
     {
-        if (raw is null) { return null; }
+        if (raw is null)
+        {
+            if (fd.FieldType == FieldType.Message && !fd.IsRepeated && !fd.IsMap
+                && fd.MessageType is { } mt && !IsWrapperType(mt.FullName))
+            {
+                return Activator.CreateInstance(mt.ClrType);
+            }
+            return null;
+        }
         if (fd.IsMap || fd.IsRepeated) { return raw; }
         if (fd.FieldType == FieldType.Enum)
         {
@@ -542,13 +664,17 @@ public sealed class ProtoTypeProvider : ITypeProvider
         return typeName switch
         {
             // Generated as nullable primitives — pass the unwrapped CLR value directly.
+            // Range-check int32/uint32 so out-of-range CEL ints surface as construct failures
+            // (which the runner reports as runtime errors per test expectations).
             "google.protobuf.BoolValue" => value is BoolValue b ? (object?)b.Value : null,
-            "google.protobuf.Int32Value" => value is IntValue i ? (int)i.Value : null,
+            "google.protobuf.Int32Value" => value is IntValue i
+                && i.Value >= int.MinValue && i.Value <= int.MaxValue
+                ? (int)i.Value : null,
             "google.protobuf.Int64Value" => value is IntValue i ? i.Value : null,
             "google.protobuf.UInt32Value" => value switch
             {
-                UintValue u => (uint)u.Value,
-                IntValue i when i.Value >= 0 => (uint)i.Value,
+                UintValue u when u.Value <= uint.MaxValue => (uint)u.Value,
+                IntValue i when i.Value >= 0 && i.Value <= uint.MaxValue => (uint)i.Value,
                 _ => null,
             },
             "google.protobuf.UInt64Value" => value switch

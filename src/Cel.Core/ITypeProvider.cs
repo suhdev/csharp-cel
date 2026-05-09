@@ -76,6 +76,15 @@ public interface ITypeProvider
     /// keeps it as <see cref="ObjectValue"/>.
     /// </summary>
     CelValue? Project(object instance);
+
+    /// <summary>
+    /// Equality comparison for two managed instances of (presumably) the same type. Returns
+    /// null when the provider doesn't have an opinion — caller falls back to CLR
+    /// <see cref="object.Equals(object?, object?)"/>. Used for protocol-specific semantics
+    /// like NaN-propagation through proto messages: two TestAllTypes with NaN double fields
+    /// must compare unequal even though their proto-generated <c>Equals</c> would say they match.
+    /// </summary>
+    bool? AreEqual(object a, object b);
 }
 
 /// <summary>A no-op provider used when no real provider is registered.</summary>
@@ -96,4 +105,5 @@ public sealed class NullTypeProvider : ITypeProvider
     public bool HasField(object instance, string field) => false;
     public object? Construct(string typeName, IReadOnlyDictionary<string, CelValue> fields) => null;
     public CelValue? Project(object instance) => null;
+    public bool? AreEqual(object a, object b) => null;
 }

@@ -50,6 +50,12 @@ public sealed class CompiledProgram
     {
         Ast = ast;
         var registry = FunctionRegistry.CreateStandard();
+        // Override stdlib equals / not_equals to consult the type provider so protocol-specific
+        // equality (proto NaN propagation, host object structural compare) takes precedence
+        // over the default record-style equality.
+        var provider = env.TypeProvider;
+        registry.Bind("equals", args => Cel.Values.CelValue.Of(Cel.Runtime.CelEquality.Equals(args[0], args[1], provider)));
+        registry.Bind("not_equals", args => Cel.Values.CelValue.Of(!Cel.Runtime.CelEquality.Equals(args[0], args[1], provider)));
         foreach (var ext in env.Extensions)
         {
             ext.ConfigureRuntime(registry.Bind);

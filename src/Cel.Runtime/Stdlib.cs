@@ -188,25 +188,13 @@ internal static class Stdlib
 
         static void BindOrdering(FunctionRegistry r, string prefix, Func<int, int, bool> pred)
         {
-            // Same-type orderings.
-            r.Bind(prefix + "_int_int", a => CelValue.Of(pred(I(a[0]).CompareTo(I(a[1])), 0)));
-            r.Bind(prefix + "_uint_uint", a => CelValue.Of(pred(U(a[0]).CompareTo(U(a[1])), 0)));
-            r.Bind(prefix + "_double_double", a =>
-            {
-                var av = D(a[0]);
-                var bv = D(a[1]);
-                // Any ordering relation involving NaN is false (IEEE 754, adopted by CEL).
-                if (double.IsNaN(av) || double.IsNaN(bv)) { return CelValue.False; }
-                return CelValue.Of(pred(av.CompareTo(bv), 0));
-            });
-            r.Bind(prefix + "_string_string", a => CelValue.Of(pred(string.CompareOrdinal(S(a[0]), S(a[1])), 0)));
-            r.Bind(prefix + "_bytes_bytes", a => CelValue.Of(pred(((BytesValue)a[0]).Value.AsSpan().SequenceCompareTo(((BytesValue)a[1]).Value.AsSpan()), 0)));
-            r.Bind(prefix + "_timestamp_timestamp", a => CelValue.Of(pred(((TimestampValue)a[0]).Value.UnixNanos.CompareTo(((TimestampValue)a[1]).Value.UnixNanos), 0)));
-            r.Bind(prefix + "_duration_duration", a => CelValue.Of(pred(((DurationValue)a[0]).Value.Nanos.CompareTo(((DurationValue)a[1]).Value.Nanos), 0)));
+            // Bool ordering: false < true (boolean as 0 < 1).
+            r.Bind(prefix + "_bool_bool", a => CelValue.Of(pred(((BoolValue)a[0]).Value.CompareTo(((BoolValue)a[1]).Value), 0)));
 
-            // Heterogeneous numeric — CelEquality.Compare promotes to double for cross-type.
-            // Loses precision for ints > 2^53 but matches CEL's "good enough" semantics for now.
-            OverloadFn cross = a =>
+            // All numeric orderings — same-type AND cross-type — go through a single
+            // promotion-aware comparator so a dyn() injection at runtime that skews the
+            // operand types from what the checker selected doesn't crash with a cast error.
+            OverloadFn numericCompare = a =>
             {
                 if ((a[0] is DoubleValue d1 && double.IsNaN(d1.Value))
                     || (a[1] is DoubleValue d2 && double.IsNaN(d2.Value)))
@@ -215,12 +203,20 @@ internal static class Stdlib
                 }
                 return CelValue.Of(pred(CelEquality.Compare(a[0], a[1]), 0));
             };
-            r.Bind(prefix + "_int_uint", cross);
-            r.Bind(prefix + "_uint_int", cross);
-            r.Bind(prefix + "_int_double", cross);
-            r.Bind(prefix + "_double_int", cross);
-            r.Bind(prefix + "_uint_double", cross);
-            r.Bind(prefix + "_double_uint", cross);
+            foreach (var id in new[]
+            {
+                "int_int", "uint_uint", "double_double",
+                "int_uint", "uint_int", "int_double", "double_int", "uint_double", "double_uint",
+            })
+            {
+                r.Bind($"{prefix}_{id}", numericCompare);
+            }
+
+            // Non-numeric orderings stay typed.
+            r.Bind(prefix + "_string_string", a => CelValue.Of(pred(string.CompareOrdinal(S(a[0]), S(a[1])), 0)));
+            r.Bind(prefix + "_bytes_bytes", a => CelValue.Of(pred(((BytesValue)a[0]).Value.AsSpan().SequenceCompareTo(((BytesValue)a[1]).Value.AsSpan()), 0)));
+            r.Bind(prefix + "_timestamp_timestamp", a => CelValue.Of(pred(((TimestampValue)a[0]).Value.UnixNanos.CompareTo(((TimestampValue)a[1]).Value.UnixNanos), 0)));
+            r.Bind(prefix + "_duration_duration", a => CelValue.Of(pred(((DurationValue)a[0]).Value.Nanos.CompareTo(((DurationValue)a[1]).Value.Nanos), 0)));
         }
     }
 

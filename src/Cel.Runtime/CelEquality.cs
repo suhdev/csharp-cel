@@ -10,7 +10,15 @@ namespace Cel.Runtime;
 public static class CelEquality
 {
     /// <summary>Returns true iff <paramref name="a"/> and <paramref name="b"/> compare equal under CEL's rules.</summary>
-    public static bool Equals(CelValue a, CelValue b)
+    public static bool Equals(CelValue a, CelValue b) => Equals(a, b, provider: null);
+
+    /// <summary>
+    /// Returns true iff <paramref name="a"/> and <paramref name="b"/> compare equal under CEL's rules.
+    /// When <paramref name="provider"/> is supplied and an <see cref="ObjectValue"/> pair maps to
+    /// a managed instance, the provider's <see cref="ITypeProvider.AreEqual"/> hook gets first
+    /// crack — needed for protocol-specific semantics (e.g. NaN propagation through proto messages).
+    /// </summary>
+    public static bool Equals(CelValue a, CelValue b, ITypeProvider? provider)
     {
         // NaN ≠ anything (including itself) per IEEE 754; CEL spec adopts this.
         if (a is DoubleValue ad && double.IsNaN(ad.Value)) { return false; }
@@ -35,11 +43,13 @@ public static class CelEquality
             (TypeValue x, TypeValue y) => x.Inner.Equals(y.Inner),
             (OptionalValue x, OptionalValue y) =>
                 x.HasValue == y.HasValue && (!x.HasValue || Equals(x.Inner!, y.Inner!)),
-            // Compare ObjectValue by the wrapped instance's own equality (proto messages have
-            // structural Equals; POCOs may or may not — pragmatically that's the user's choice).
+            // Compare ObjectValue by the wrapped instance's own equality. The provider gets
+            // first crack so that proto-aware semantics (NaN propagation through messages) win
+            // over the auto-generated proto Equals (which uses bit-equality on doubles and
+            // therefore says NaN == NaN).
             (ObjectValue x, ObjectValue y) =>
                 string.Equals(x.TypeName, y.TypeName, StringComparison.Ordinal)
-                && Equals(x.Native, y.Native),
+                && (provider?.AreEqual(x.Native, y.Native) ?? object.Equals(x.Native, y.Native)),
             _ => a.GetType() == b.GetType() && a.Equals(b),
         };
     }

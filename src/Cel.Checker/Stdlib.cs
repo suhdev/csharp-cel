@@ -265,6 +265,7 @@ internal static class Stdlib
     private static void AddOrdering(CelEnv.Builder builder, string fn, string idPrefix)
     {
         builder.Function(fn,
+            new OverloadDecl(idPrefix + "_bool_bool", [CelTypes.Bool, CelTypes.Bool], CelTypes.Bool),
             new OverloadDecl(idPrefix + "_int_int", [CelTypes.Int, CelTypes.Int], CelTypes.Bool),
             new OverloadDecl(idPrefix + "_uint_uint", [CelTypes.Uint, CelTypes.Uint], CelTypes.Bool),
             new OverloadDecl(idPrefix + "_double_double", [CelTypes.Double, CelTypes.Double], CelTypes.Bool),
