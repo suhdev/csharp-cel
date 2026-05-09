@@ -58,7 +58,12 @@ public static class ConformanceRunner
     public static FileResult RunFile(string path)
     {
         var name = Path.GetFileNameWithoutExtension(path);
-        var source = File.ReadAllText(path);
+        // Read as raw bytes mapped to Latin-1 chars (one byte → one char). This preserves the
+        // byte fidelity that proto text format requires: escapes like \xff stay as a single byte
+        // 0xFF, and literal non-ASCII chars in the source stay as their UTF-8 byte sequence
+        // (rather than being collapsed to a single .NET char by UTF-8 decoding).
+        var bytes = File.ReadAllBytes(path);
+        var source = System.Text.Encoding.Latin1.GetString(bytes);
         TextProtoMessage tree;
         try
         {

@@ -30,6 +30,7 @@ internal static class Stdlib
         Conversions(r);
         Strings(r);
         Optionals(r);
+        Time(r);
     }
 
     // ── arithmetic ──
@@ -329,7 +330,12 @@ internal static class Stdlib
         {
             var d = D(a[0]);
             if (double.IsNaN(d) || double.IsInfinity(d)) { return CelValue.Error("double to int: not finite"); }
-            if (d < long.MinValue || d > long.MaxValue) { return CelValue.Error("double to int overflow"); }
+            // (double)long.MaxValue rounds up to 2^63, so a double of exactly 2^63 cannot be
+            // represented as long — use a strict-less-than check at the upper bound.
+            if (d < -9223372036854775808.0 || d >= 9223372036854775808.0)
+            {
+                return CelValue.Error("double to int overflow");
+            }
             return CelValue.Of((long)d);
         });
         r.Bind("string_to_int", static a =>
@@ -420,6 +426,80 @@ internal static class Stdlib
             if (nanos is null) { return CelValue.Error($"cannot parse duration: {s}"); }
             return CelValue.Of(new CelDuration(nanos.Value));
         });
+    }
+
+    private static void Time(FunctionRegistry r)
+    {
+        // Timestamp accessors: each has a no-tz variant (UTC) and a `with_tz` variant taking
+        // either an IANA name ("America/Los_Angeles") or a fixed offset ("+11:00").
+        BindTimestamp(r, "timestamp_to_year",          static dto => dto.Year);
+        BindTimestamp(r, "timestamp_to_month",         static dto => dto.Month - 1);
+        BindTimestamp(r, "timestamp_to_date",          static dto => dto.Day);
+        BindTimestamp(r, "timestamp_to_day_of_month",  static dto => dto.Day - 1);
+        BindTimestamp(r, "timestamp_to_day_of_week",   static dto => (long)dto.DayOfWeek);
+        BindTimestamp(r, "timestamp_to_day_of_year",   static dto => dto.DayOfYear - 1);
+        BindTimestamp(r, "timestamp_to_hours",         static dto => dto.Hour);
+        BindTimestamp(r, "timestamp_to_minutes",       static dto => dto.Minute);
+        BindTimestamp(r, "timestamp_to_seconds",       static dto => dto.Second);
+        BindTimestamp(r, "timestamp_to_milliseconds",  static dto => dto.Millisecond);
+
+        // Duration accessors return whole-units truncated toward zero, matching cel-go.
+        r.Bind("duration_to_hours",        static a => CelValue.Of(((DurationValue)a[0]).Value.Nanos / (CelDuration.NanosPerSecond * 3600)));
+        r.Bind("duration_to_minutes",      static a => CelValue.Of(((DurationValue)a[0]).Value.Nanos / (CelDuration.NanosPerSecond * 60)));
+        r.Bind("duration_to_seconds",      static a => CelValue.Of(((DurationValue)a[0]).Value.Nanos / CelDuration.NanosPerSecond));
+        r.Bind("duration_to_milliseconds", static a => CelValue.Of(((DurationValue)a[0]).Value.Nanos / CelDuration.NanosPerMillisecond));
+    }
+
+    private static void BindTimestamp(FunctionRegistry r, string idPrefix, Func<DateTimeOffset, long> get)
+    {
+        r.Bind(idPrefix, a =>
+        {
+            var ts = ((TimestampValue)a[0]).Value;
+            return CelValue.Of(get(ts.ToDateTimeOffset()));
+        });
+        r.Bind(idPrefix + "_with_tz", a =>
+        {
+            var ts = ((TimestampValue)a[0]).Value;
+            var tzName = ((StringValue)a[1]).Value;
+            var tz = ResolveTimeZone(tzName);
+            if (tz is null)
+            {
+                return CelValue.Error($"unknown timezone: {tzName}");
+            }
+            var local = TimeZoneInfo.ConvertTime(ts.ToDateTimeOffset(), tz);
+            return CelValue.Of(get(local));
+        });
+    }
+
+    private static TimeZoneInfo? ResolveTimeZone(string tz)
+    {
+        if (string.IsNullOrEmpty(tz))
+        {
+            return TimeZoneInfo.Utc;
+        }
+        // Numeric offset like "+11:00", "-02:30", or "02:00" (unsigned → positive).
+        var sign = 1;
+        var span = tz.AsSpan();
+        if (span[0] == '+') { span = span[1..]; }
+        else if (span[0] == '-') { sign = -1; span = span[1..]; }
+        if (span.Length >= 4 && (char.IsAsciiDigit(span[0]) || char.IsAsciiDigit(span[1])))
+        {
+            if (TimeSpan.TryParseExact(span, "h\\:mm", System.Globalization.CultureInfo.InvariantCulture, out var offset)
+                || TimeSpan.TryParseExact(span, "hh\\:mm", System.Globalization.CultureInfo.InvariantCulture, out offset))
+            {
+                if (sign == -1)
+                {
+                    offset = -offset;
+                }
+                return TimeZoneInfo.CreateCustomTimeZone(tz, offset, tz, tz);
+            }
+        }
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(tz);
+        }
+        catch (TimeZoneNotFoundException) { return null; }
+        catch (InvalidTimeZoneException) { return null; }
     }
 
     private static void Optionals(FunctionRegistry r)

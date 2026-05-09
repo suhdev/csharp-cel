@@ -202,6 +202,33 @@ internal static class Stdlib
         builder.Function("duration",
             new OverloadDecl("string_to_duration", [CelTypes.String], CelTypes.Duration));
 
+        // ── timestamp / duration accessors ──
+        AddTimestampAccessor(builder, "getFullYear", "timestamp_to_year");
+        AddTimestampAccessor(builder, "getMonth", "timestamp_to_month");
+        AddTimestampAccessor(builder, "getDate", "timestamp_to_date");
+        AddTimestampAccessor(builder, "getDayOfMonth", "timestamp_to_day_of_month");
+        AddTimestampAccessor(builder, "getDayOfWeek", "timestamp_to_day_of_week");
+        AddTimestampAccessor(builder, "getDayOfYear", "timestamp_to_day_of_year");
+
+        // getHours / getMinutes / getSeconds / getMilliseconds work on both timestamps and
+        // durations; the duration form has no timezone variant.
+        builder.Function("getHours",
+            new OverloadDecl("timestamp_to_hours", [CelTypes.Timestamp], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("timestamp_to_hours_with_tz", [CelTypes.Timestamp, CelTypes.String], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("duration_to_hours", [CelTypes.Duration], CelTypes.Int, IsInstance: true));
+        builder.Function("getMinutes",
+            new OverloadDecl("timestamp_to_minutes", [CelTypes.Timestamp], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("timestamp_to_minutes_with_tz", [CelTypes.Timestamp, CelTypes.String], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("duration_to_minutes", [CelTypes.Duration], CelTypes.Int, IsInstance: true));
+        builder.Function("getSeconds",
+            new OverloadDecl("timestamp_to_seconds", [CelTypes.Timestamp], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("timestamp_to_seconds_with_tz", [CelTypes.Timestamp, CelTypes.String], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("duration_to_seconds", [CelTypes.Duration], CelTypes.Int, IsInstance: true));
+        builder.Function("getMilliseconds",
+            new OverloadDecl("timestamp_to_milliseconds", [CelTypes.Timestamp], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("timestamp_to_milliseconds_with_tz", [CelTypes.Timestamp, CelTypes.String], CelTypes.Int, IsInstance: true),
+            new OverloadDecl("duration_to_milliseconds", [CelTypes.Duration], CelTypes.Int, IsInstance: true));
+
         // ── string membership / search ──
         builder.Function("contains",
             new OverloadDecl("contains_string", [CelTypes.String, CelTypes.String], CelTypes.Bool, IsInstance: true));
@@ -226,6 +253,14 @@ internal static class Stdlib
 
     private static OverloadDecl Un(string id, CelType arg, CelType result) =>
         new(id, [arg], result);
+
+    private static void AddTimestampAccessor(CelEnv.Builder builder, string name, string idPrefix)
+    {
+        builder.Function(name,
+            new OverloadDecl(idPrefix, [CelTypes.Timestamp], CelTypes.Int, IsInstance: true),
+            new OverloadDecl(idPrefix + "_with_tz",
+                [CelTypes.Timestamp, CelTypes.String], CelTypes.Int, IsInstance: true));
+    }
 
     private static void AddOrdering(CelEnv.Builder builder, string fn, string idPrefix)
     {

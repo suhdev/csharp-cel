@@ -10,7 +10,27 @@ namespace Cel.Conformance.TextProto;
 /// </summary>
 internal abstract record TextProtoValue;
 
-internal sealed record TextProtoString(string Value) : TextProtoValue;
+internal sealed record TextProtoString(string Value) : TextProtoValue
+{
+    /// <summary>
+    /// Decode the textproto string as a proto-text byte sequence and interpret as UTF-8. The
+    /// parser stores each byte from the source as one .NET char (via Latin-1 read of the file
+    /// + escape-as-byte handling); this method re-encodes those low bytes and decodes them as
+    /// UTF-8 so the resulting <see cref="string"/> is an idiomatic .NET Unicode string.
+    /// </summary>
+    public string Decoded
+    {
+        get
+        {
+            var bytes = new byte[Value.Length];
+            for (var i = 0; i < Value.Length; i++)
+            {
+                bytes[i] = (byte)Value[i];
+            }
+            return System.Text.Encoding.UTF8.GetString(bytes);
+        }
+    }
+}
 
 internal sealed record TextProtoInt(long Value) : TextProtoValue;
 
@@ -61,7 +81,8 @@ internal sealed record TextProtoMessage(IReadOnlyList<TextProtoField> Fields)
     public TextProtoMessage? Sub(string name) =>
         FirstOrNull(name)?.Value is TextProtoMessageValue m ? m.Message : null;
 
-    public string? Str(string name) => (FirstOrNull(name)?.Value as TextProtoString)?.Value;
+    public string? Str(string name) => (FirstOrNull(name)?.Value as TextProtoString)?.Decoded;
+    public string? StrRaw(string name) => (FirstOrNull(name)?.Value as TextProtoString)?.Value;
     public long? Int(string name) => (FirstOrNull(name)?.Value as TextProtoInt)?.Value;
     public bool? Bool(string name) => (FirstOrNull(name)?.Value as TextProtoBool)?.Value;
 

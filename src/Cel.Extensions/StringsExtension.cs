@@ -74,6 +74,10 @@ public sealed class StringsExtension : ICelExtension
 
         b.Function("reverse",
             new OverloadDecl("string_reverse", [CelTypes.String], CelTypes.String, IsInstance: true));
+
+        // strings.quote(s) — namespaced JSON-style quoting helper.
+        b.Function("strings.quote",
+            new OverloadDecl("strings_quote", [CelTypes.String], CelTypes.String));
     }
 
     public void ConfigureRuntime(Action<string, OverloadFn> bind)
@@ -95,6 +99,39 @@ public sealed class StringsExtension : ICelExtension
         bind("list_string_join", Join);
         bind("list_string_join_string", JoinSep);
         bind("string_reverse", Reverse);
+        bind("strings_quote", Quote);
+    }
+
+    /// <summary>
+    /// Quote a CEL string: wrap in <c>"..."</c> with control chars and quotes escaped using
+    /// the standard CEL escape forms (<c>\n</c>, <c>\t</c>, <c>\\</c>, <c>\"</c>, etc.). Used
+    /// by <c>strings.quote(s)</c>.
+    /// </summary>
+    private static CelValue Quote(ReadOnlySpan<CelValue> args)
+    {
+        var s = S(args[0]);
+        var sb = new StringBuilder(s.Length + 2);
+        sb.Append('"');
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                case '\v': sb.Append("\\v"); break;
+                case '\a': sb.Append("\\a"); break;
+                default:
+                    sb.Append(c);
+                    break;
+            }
+        }
+        sb.Append('"');
+        return CelValue.Of(sb.ToString());
     }
 
     // ── implementations ──
@@ -138,10 +175,12 @@ public sealed class StringsExtension : ICelExtension
         var sub = S(args[1]);
         var start = I(args[2]);
         if (start < 0 || start > s.Length) { return CelValue.Error($"index out of range: {start}"); }
-        // .NET LastIndexOf semantics: search backwards from startIndex; we want forward search up to startIndex.
-        // cel-go: returns last index <= start.
+        // CEL semantics: returns the largest i such that s.Substring(i, sub.Length) == sub
+        // AND i <= start. Empty sub matches at min(start, s.Length).
+        if (sub.Length == 0) { return CelValue.Of(Math.Min(start, (long)s.Length)); }
+        var maxI = (int)Math.Min(start, s.Length - sub.Length);
         var result = -1;
-        for (var i = 0; i + sub.Length <= start; i++)
+        for (var i = 0; i <= maxI; i++)
         {
             if (string.CompareOrdinal(s, i, sub, 0, sub.Length) == 0)
             {

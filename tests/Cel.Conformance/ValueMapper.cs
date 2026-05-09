@@ -30,7 +30,7 @@ internal static class ValueMapper
                 case "double_value":
                     return CelValue.Of(AsDouble(f.Value));
                 case "string_value":
-                    return CelValue.Of(DecodeProtoString(((TextProtoString)f.Value).Value));
+                    return CelValue.Of(((TextProtoString)f.Value).Decoded);
                 case "bytes_value":
                     return ParseBytes((TextProtoString)f.Value);
                 case "list_value":
@@ -153,22 +153,6 @@ internal static class ValueMapper
             builder[ParseValue(k)] = ParseValue(v);
         }
         return new MapValue(builder.ToImmutable());
-    }
-
-    /// <summary>
-    /// Decode a textproto-string-as-bytes back to a UTF-8 .NET string. Our parser stores each
-    /// byte of a textproto string as one char (so <c>\xe2\x9c\x8c</c> becomes three chars with
-    /// values 0xE2, 0x9C, 0x8C); to materialise the actual proto string we re-encode those low
-    /// bytes and decode as UTF-8.
-    /// </summary>
-    private static string DecodeProtoString(string raw)
-    {
-        var bytes = new byte[raw.Length];
-        for (var i = 0; i < raw.Length; i++)
-        {
-            bytes[i] = (byte)raw[i];
-        }
-        return System.Text.Encoding.UTF8.GetString(bytes);
     }
 
     private static CelValue ParseBytes(TextProtoString s)
