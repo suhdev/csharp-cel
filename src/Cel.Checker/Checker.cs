@@ -140,7 +140,9 @@ public sealed class Checker
         // If the entire select chain flattens to a known qualified variable name, prefer the
         // variable over a literal field-by-field walk. Mirrors cel-go's "namespace lookup wins
         // over receiver-with-select" rule. Skip for has(...) — that semantics is field presence.
-        if (!e.TestOnly)
+        // BUT: if the leftmost identifier is in a comprehension scope (cel.bind, all/exists),
+        // that binding shadows a qualified-variable hit further out.
+        if (!e.TestOnly && !LeftmostIdentInScope(e))
         {
             var qualified = TryFlattenSelectChainToVar(e);
             if (qualified is not null)
@@ -441,6 +443,32 @@ public sealed class Checker
             }
         }
         return (null, CelTypes.Error);
+    }
+
+    /// <summary>
+    /// Whether the leftmost identifier of the select chain is bound in an active comprehension
+    /// scope. Used to suppress qualified-variable lookup when the leaf name is shadowed by a
+    /// local binding (e.g. <c>cel.bind(x, ...)</c> body referencing <c>x.y</c> shouldn't
+    /// resolve <c>com.example.x.y</c>).
+    /// </summary>
+    private bool LeftmostIdentInScope(SelectExpr e)
+    {
+        var cur = e.Operand;
+        while (cur is SelectExpr s)
+        {
+            cur = s.Operand;
+        }
+        if (cur is IdentifierExpr ident)
+        {
+            foreach (var frame in _scopes)
+            {
+                if (frame.ContainsKey(ident.Name))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// <summary>

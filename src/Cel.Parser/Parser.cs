@@ -18,30 +18,48 @@ public sealed class Parser
     private readonly ImmutableArray<Token> _tokens;
     private readonly DiagnosticBag _diagnostics;
     private readonly ExprBuilder _builder;
+    private readonly IdGenerator _ids;
     private readonly SourceInfoBuilder _sourceInfo;
     private readonly string? _sourceName;
+    private readonly ImmutableArray<CelMacro> _macros;
     private int _pos;
     private int _depth;
 
-    private Parser(ImmutableArray<Token> tokens, DiagnosticBag diagnostics, string? sourceName, string? source)
+    private Parser(
+        ImmutableArray<Token> tokens,
+        DiagnosticBag diagnostics,
+        string? sourceName,
+        string? source,
+        ImmutableArray<CelMacro> macros)
     {
         _tokens = tokens;
         _diagnostics = diagnostics;
         _sourceName = sourceName;
         _sourceInfo = new SourceInfoBuilder { Source = source };
-        _builder = new ExprBuilder(new IdGenerator(), _sourceInfo);
+        _ids = new IdGenerator();
+        _builder = new ExprBuilder(_ids, _sourceInfo);
+        _macros = macros;
     }
 
     /// <summary>
     /// Parse a CEL expression. Returns a <see cref="ParseResult"/> containing the AST (when
     /// recoverable), the source-info side-table, and all diagnostics from both lex and parse.
     /// </summary>
-    public static ParseResult Parse(string source, string? sourceName = null)
+    public static ParseResult Parse(string source, string? sourceName = null) =>
+        Parse(source, sourceName, ImmutableArray<CelMacro>.Empty);
+
+    /// <summary>
+    /// Parse with extension-supplied macros. Macros are consulted after the parser's hardcoded
+    /// set (<c>has</c>, <c>all</c>, <c>exists</c>, <c>exists_one</c>, <c>map</c>, <c>filter</c>);
+    /// for namespaced macros (<see cref="CelMacro.IsReceiverStyle"/> = false), the receiver
+    /// chain is flattened to a dotted name and matched against <see cref="CelMacro.Name"/>.
+    /// </summary>
+    public static ParseResult Parse(string source, string? sourceName, ImmutableArray<CelMacro> macros)
     {
         ArgumentNullException.ThrowIfNull(source);
         var diagnostics = new DiagnosticBag();
         var tokens = Lexer.Tokenize(source, diagnostics, sourceName);
-        var parser = new Parser(tokens, diagnostics, sourceName, source);
+        var parser = new Parser(tokens, diagnostics, sourceName, source, macros);
         var expr = parser.ParseTopLevel();
         return new ParseResult(expr, parser._sourceInfo.Build(), [.. diagnostics]);
     }
@@ -589,26 +607,90 @@ public sealed class Parser
     private Expr? TryExpandMacro(Expr? receiver, string function, ImmutableArray<Expr> args, SourceLocation loc)
     {
         // has(e.f) — only as a global call.
-        if (receiver is null && function == Macros.Has && args.Length == 1)
+        if (receiver is null && function == Cel.Macros.Has && args.Length == 1)
         {
             return ExpandHas(args[0], loc);
         }
 
-        if (receiver is null)
+        // Hardcoded receiver-style macros.
+        if (receiver is not null)
+        {
+            var builtin = function switch
+            {
+                Cel.Macros.All when args.Length == 2 => ExpandQuantifier(receiver, args, loc, exists: false),
+                Cel.Macros.Exists when args.Length == 2 => ExpandQuantifier(receiver, args, loc, exists: true),
+                Cel.Macros.ExistsOne when args.Length == 2 => ExpandExistsOne(receiver, args, loc),
+                Cel.Macros.Map when args.Length == 2 => ExpandMap(receiver, args, filter: null, loc),
+                Cel.Macros.Map when args.Length == 3 => ExpandMap(receiver, [args[0], args[2]], filter: args[1], loc),
+                Cel.Macros.Filter when args.Length == 2 => ExpandFilter(receiver, args, loc),
+                _ => null,
+            };
+            if (builtin is not null)
+            {
+                return builtin;
+            }
+        }
+
+        return TryExpandExtensionMacro(receiver, function, args, loc);
+    }
+
+    private Expr? TryExpandExtensionMacro(Expr? receiver, string function, ImmutableArray<Expr> args, SourceLocation loc)
+    {
+        if (_macros.IsDefaultOrEmpty)
         {
             return null;
         }
+        // Pre-flatten the receiver chain for namespaced-macro matching (e.g. cel.bind).
+        var qualified = receiver is null ? null : TryFlattenIdentChain(receiver);
+        var qualifiedName = qualified is null ? null : $"{qualified}.{function}";
 
-        return function switch
+        foreach (var macro in _macros)
         {
-            Macros.All when args.Length == 2 => ExpandQuantifier(receiver, args, loc, exists: false),
-            Macros.Exists when args.Length == 2 => ExpandQuantifier(receiver, args, loc, exists: true),
-            Macros.ExistsOne when args.Length == 2 => ExpandExistsOne(receiver, args, loc),
-            Macros.Map when args.Length == 2 => ExpandMap(receiver, args, filter: null, loc),
-            Macros.Map when args.Length == 3 => ExpandMap(receiver, [args[0], args[2]], filter: args[1], loc),
-            Macros.Filter when args.Length == 2 => ExpandFilter(receiver, args, loc),
-            _ => null,
-        };
+            if (macro.Arity >= 0 && macro.Arity != args.Length)
+            {
+                continue;
+            }
+            var matches = macro.IsReceiverStyle
+                ? receiver is not null && string.Equals(macro.Name, function, StringComparison.Ordinal)
+                : qualifiedName is not null && string.Equals(macro.Name, qualifiedName, StringComparison.Ordinal);
+            if (!matches)
+            {
+                continue;
+            }
+            var ctx = new MacroExpansionContext(_ids, _sourceInfo, _diagnostics, loc);
+            var expanded = macro.Expand(ctx, receiver, args);
+            if (expanded is not null)
+            {
+                return expanded;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Flatten a SelectExpr / IdentifierExpr chain to a dotted name for namespaced-macro
+    /// matching. Returns null when the chain contains anything else.
+    /// </summary>
+    private static string? TryFlattenIdentChain(Expr e)
+    {
+        var parts = new Stack<string>();
+        var cur = e;
+        while (cur is SelectExpr s && !s.TestOnly)
+        {
+            parts.Push(s.Field);
+            cur = s.Operand;
+        }
+        if (cur is IdentifierExpr ident)
+        {
+            var name = ident.Name;
+            if (name.Length > 0 && name[0] == '.')
+            {
+                name = name[1..];
+            }
+            parts.Push(name);
+            return string.Join('.', parts);
+        }
+        return null;
     }
 
     private Expr ExpandHas(Expr arg, SourceLocation loc)

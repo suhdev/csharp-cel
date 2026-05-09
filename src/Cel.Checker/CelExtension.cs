@@ -28,4 +28,11 @@ public interface ICelExtension
     /// overload id (the same id passed to <see cref="OverloadDecl"/>).
     /// </summary>
     void ConfigureRuntime(Action<string, OverloadFn> bindImpl);
+
+    /// <summary>
+    /// Optional parser-level macros (e.g. <c>cel.bind</c>, <c>optMap</c>). Returned macros are
+    /// consulted by the parser after its hardcoded set (<c>has</c>, <c>all</c>, <c>exists</c>,
+    /// ...). Default is empty.
+    /// </summary>
+    IEnumerable<CelMacro> Macros => Array.Empty<CelMacro>();
 }

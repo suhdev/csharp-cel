@@ -185,7 +185,8 @@ public static class ConformanceRunner
             .Use(StringsExtension.Instance)
             .Use(MathExtension.Instance)
             .Use(EncodersExtension.Instance)
-            .Use(SetsExtension.Instance);
+            .Use(SetsExtension.Instance)
+            .Use(BindingsExtension.Instance);
         // Pre-register every reachable proto enum constant as an int variable so
         // `pkg.MyEnum.VALUE` resolves through normal qualified-name lookup.
         foreach (var (enumName, _) in EnumConstants)

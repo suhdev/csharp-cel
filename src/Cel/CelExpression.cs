@@ -22,7 +22,7 @@ public static class CelExpression
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(env);
 
-        var parsed = Parsing.Parser.Parse(source);
+        var parsed = Parsing.Parser.Parse(source, sourceName: null, env.Macros);
         if (parsed.HasErrors)
         {
             throw new CelCompileException(parsed.Diagnostics);

@@ -24,6 +24,7 @@ public sealed class CelEnv
     public ImmutableDictionary<string, VariableDecl> Variables { get; }
     public ImmutableDictionary<string, FunctionDecl> Functions { get; }
     public ImmutableArray<ICelExtension> Extensions { get; }
+    public ImmutableArray<CelMacro> Macros { get; }
     public ITypeProvider TypeProvider { get; }
 
     private CelEnv(
@@ -31,12 +32,14 @@ public sealed class CelEnv
         ImmutableDictionary<string, VariableDecl> variables,
         ImmutableDictionary<string, FunctionDecl> functions,
         ImmutableArray<ICelExtension> extensions,
+        ImmutableArray<CelMacro> macros,
         ITypeProvider typeProvider)
     {
         Container = container;
         Variables = variables;
         Functions = functions;
         Extensions = extensions;
+        Macros = macros;
         TypeProvider = typeProvider;
     }
 
@@ -183,11 +186,13 @@ public sealed class CelEnv
             {
                 Stdlib.Apply(this);
             }
+            var macros = _extensions.SelectMany(static e => e.Macros).ToImmutableArray();
             return new CelEnv(
                 _container,
                 _vars.ToImmutableDictionary(StringComparer.Ordinal),
                 _fns.ToImmutableDictionary(StringComparer.Ordinal),
                 [.. _extensions],
+                macros,
                 _typeProvider);
         }
     }
