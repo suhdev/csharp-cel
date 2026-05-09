@@ -172,16 +172,18 @@ public sealed class NetworkExtension : ICelExtension
         {
             return false; // zone identifier — disallowed by cel-go ext/network
         }
-        // .NET's IPAddress.TryParse accepts shapes that aren't valid CEL inputs — notably
-        // dotted IPv4 with the wrong octet count gets reinterpreted (e.g. "192.168.0.1.0"
-        // sometimes parses as an integer-style address), and IPv4-mapped IPv6 inputs with
-        // extra dots in the v4 tail also slip through. Require any dotted form to have
-        // exactly three dots (four octets).
+        // CEL spec disallows IPv4-mapped IPv6 inputs in dotted form (`::ffff:192.168.0.1`):
+        // any string mixing dots and colons is rejected. Pure IPv4 (3 dots) or pure IPv6
+        // (no dots) are accepted; dotted IPv4 with the wrong octet count is also rejected
+        // because .NET's TryParse silently accepts oddities like "192.168.0.1.0".
         var dots = 0;
+        var colons = 0;
         foreach (var c in s)
         {
             if (c == '.') { dots++; }
+            else if (c == ':') { colons++; }
         }
+        if (dots > 0 && colons > 0) { return false; }
         if (dots != 0 && dots != 3) { return false; }
         if (!IPAddress.TryParse(s, out var parsed))
         {
@@ -296,13 +298,15 @@ public sealed class CelCidr : IEquatable<CelCidr>
         var ipPart = s[..slash];
         var prefixPart = s[(slash + 1)..];
         if (ipPart.Contains('%', StringComparison.Ordinal)) { return false; }
-        // Same dot-count guard as IP parsing — reject shapes IPAddress.TryParse would
-        // reinterpret unexpectedly.
+        // Same dot-count + dotted-IPv6 guards as IP parsing.
         var dots = 0;
+        var colons = 0;
         foreach (var c in ipPart)
         {
             if (c == '.') { dots++; }
+            else if (c == ':') { colons++; }
         }
+        if (dots > 0 && colons > 0) { return false; }
         if (dots != 0 && dots != 3) { return false; }
         if (!IPAddress.TryParse(ipPart, out var ip)) { return false; }
         if (!int.TryParse(prefixPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var prefix)
