@@ -45,14 +45,13 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 
 | Category | Status |
 |----------|--------|
-| `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing` | **100%** |
-| `math_ext`, `string`, `parse`, `conversions`, `fields` | **80–96%** |
-| `optionals`, `comparisons`, `timestamps`, `namespace` | **50–71%** |
-| `string_ext` | **41%** — UTF-8 byte indexing differs from cel-go |
+| `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
+| `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **80–96%** |
+| `optionals`, `comparisons`, `namespace` | **60–71%** |
 | `proto2`, `proto3`, `enums`, `dynamic`, `wrappers` | **7–30%** — proto runtime not yet wired |
 | `bindings_ext`, `block_ext` | **0%** — `cel.bind` / `cel.@block` need parser-level macro hooks |
 | `network_ext`, `macros2`, `proto2_ext`, `type_deduction`, `unknowns` | **0–17%** — features not yet built |
-| **Total** | **1299 / 2263 ran (57%) over 2454 cases (191 skipped)** |
+| **Total** | **1421 / 2263 ran (63%) over 2454 cases (191 skipped)** |
 
 ### Known gaps
 

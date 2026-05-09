@@ -78,6 +78,11 @@ public sealed class StringsExtension : ICelExtension
         // strings.quote(s) — namespaced JSON-style quoting helper.
         b.Function("strings.quote",
             new OverloadDecl("strings_quote", [CelTypes.String], CelTypes.String));
+
+        // string.format(args) — printf-style substitution.
+        b.Function("format",
+            new OverloadDecl("string_format",
+                [CelTypes.String, CelTypes.List(CelTypes.Dyn)], CelTypes.String, IsInstance: true));
     }
 
     public void ConfigureRuntime(Action<string, OverloadFn> bind)
@@ -100,6 +105,186 @@ public sealed class StringsExtension : ICelExtension
         bind("list_string_join_string", JoinSep);
         bind("string_reverse", Reverse);
         bind("strings_quote", Quote);
+        bind("string_format", Format);
+    }
+
+    /// <summary>
+    /// CEL printf-style format. Supports a useful subset of the cel-go specifiers:
+    /// <c>%s</c> (CEL string of any value), <c>%d</c> (int/uint), <c>%f</c> (double, default
+    /// precision 6, custom via <c>%.Nf</c>), <c>%e</c>/<c>%E</c> (scientific, custom via
+    /// <c>%.Ne</c>), <c>%b</c>/<c>%o</c>/<c>%x</c>/<c>%X</c> (binary/octal/hex), <c>%t</c>
+    /// (bool), <c>%%</c> (literal percent). Unsupported specifiers and arity mismatches surface
+    /// as errors.
+    /// </summary>
+    private static CelValue Format(ReadOnlySpan<CelValue> args)
+    {
+        var fmt = S(args[0]);
+        var values = (ListValue)args[1];
+        var sb = new StringBuilder(fmt.Length);
+        var argIdx = 0;
+        for (var i = 0; i < fmt.Length; i++)
+        {
+            var c = fmt[i];
+            if (c != '%')
+            {
+                sb.Append(c);
+                continue;
+            }
+            if (i + 1 >= fmt.Length)
+            {
+                return CelValue.Error("trailing '%' in format string");
+            }
+            i++;
+            if (fmt[i] == '%')
+            {
+                sb.Append('%');
+                continue;
+            }
+            int? precision = null;
+            if (fmt[i] == '.')
+            {
+                i++;
+                var pStart = i;
+                while (i < fmt.Length && char.IsAsciiDigit(fmt[i]))
+                {
+                    i++;
+                }
+                if (pStart == i || !int.TryParse(fmt.AsSpan(pStart, i - pStart), out var prec))
+                {
+                    return CelValue.Error($"invalid format precision at offset {pStart}");
+                }
+                precision = prec;
+            }
+            if (i >= fmt.Length)
+            {
+                return CelValue.Error("incomplete format spec");
+            }
+            if (argIdx >= values.Elements.Length)
+            {
+                return CelValue.Error("format: not enough arguments");
+            }
+            var arg = values.Elements[argIdx++];
+            var verb = fmt[i];
+            var formatted = FormatOne(verb, precision, arg);
+            if (formatted is null)
+            {
+                return CelValue.Error($"format: cannot apply %{verb} to {arg.Type.Name}");
+            }
+            sb.Append(formatted);
+        }
+        return CelValue.Of(sb.ToString());
+    }
+
+    private static string? FormatOne(char verb, int? precision, CelValue arg)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        switch (verb)
+        {
+            case 's':
+                return arg switch
+                {
+                    StringValue sv => sv.Value,
+                    BoolValue bv => bv.Value ? "true" : "false",
+                    IntValue iv => iv.Value.ToString(inv),
+                    UintValue uv => uv.Value.ToString(inv),
+                    DoubleValue dv => dv.Value.ToString("R", inv),
+                    NullValue => "null",
+                    BytesValue byv => Convert.ToHexString(byv.Value.AsSpan()),
+                    _ => arg.ToClrObject()?.ToString() ?? "",
+                };
+            case 'd':
+                return arg switch
+                {
+                    IntValue i => i.Value.ToString(inv),
+                    UintValue u => u.Value.ToString(inv),
+                    _ => null,
+                };
+            case 'f':
+                {
+                    if (arg is not DoubleValue d)
+                    {
+                        return null;
+                    }
+                    var prec = precision ?? 6;
+                    return d.Value.ToString($"F{prec}", inv);
+                }
+            case 'e':
+            case 'E':
+                {
+                    if (arg is not DoubleValue d)
+                    {
+                        return null;
+                    }
+                    var prec = precision ?? 6;
+                    var raw = d.Value.ToString($"{verb}{prec}", inv);
+                    // .NET emits "e+003" / "e+03" depending; cel-go emits "e+03". Normalise the
+                    // exponent to two digits.
+                    return NormalizeExponent(raw);
+                }
+            case 'b':
+                {
+                    long n = arg switch
+                    {
+                        IntValue i => i.Value,
+                        UintValue u => (long)u.Value,
+                        _ => 0,
+                    };
+                    if (arg is not (IntValue or UintValue))
+                    {
+                        return null;
+                    }
+                    return Convert.ToString(n, 2);
+                }
+            case 'o':
+                {
+                    if (arg is not (IntValue or UintValue))
+                    {
+                        return null;
+                    }
+                    long n = arg is IntValue i ? i.Value : (long)((UintValue)arg).Value;
+                    return Convert.ToString(n, 8);
+                }
+            case 'x':
+            case 'X':
+                {
+                    if (arg is not (IntValue or UintValue))
+                    {
+                        return null;
+                    }
+                    long n = arg is IntValue i ? i.Value : (long)((UintValue)arg).Value;
+                    return n.ToString(verb == 'x' ? "x" : "X", inv);
+                }
+            case 't':
+                return arg is BoolValue tv ? (tv.Value ? "true" : "false") : null;
+            default:
+                return null;
+        }
+    }
+
+    private static string NormalizeExponent(string s)
+    {
+        var eIdx = s.IndexOfAny(['e', 'E']);
+        if (eIdx < 0 || eIdx + 2 >= s.Length)
+        {
+            return s;
+        }
+        var sign = s[eIdx + 1];
+        if (sign != '+' && sign != '-')
+        {
+            return s;
+        }
+        var digits = s[(eIdx + 2)..];
+        // Trim leading zeros down to a minimum of two digits.
+        var trimmed = digits.TrimStart('0');
+        if (trimmed.Length == 0)
+        {
+            trimmed = "0";
+        }
+        if (trimmed.Length < 2)
+        {
+            trimmed = trimmed.PadLeft(2, '0');
+        }
+        return string.Concat(s.AsSpan(0, eIdx + 2), trimmed);
     }
 
     /// <summary>
