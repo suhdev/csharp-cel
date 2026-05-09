@@ -59,7 +59,7 @@ jobs:
       - name: Test (sanity)
         # Treat a failing test on a release as a hard stop — better to refuse a
         # broken release than to publish it.
-        run: dotnet test tests/Cel.UnitTests --configuration Release --no-build
+        run: dotnet test tests/DotnetCel.UnitTests --configuration Release --no-build
 
       - name: Pack
         run: dotnet pack --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output artifacts

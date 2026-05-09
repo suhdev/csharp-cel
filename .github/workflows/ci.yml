@@ -59,12 +59,12 @@ jobs:
 
       - name: Unit tests
         working-directory: cel-csharp
-        run: dotnet test tests/Cel.UnitTests --configuration Release --no-build --logger "console;verbosity=normal"
+        run: dotnet test tests/DotnetCel.UnitTests --configuration Release --no-build --logger "console;verbosity=normal"
 
       - name: Conformance harness (cel-spec corpus)
         working-directory: cel-csharp
         continue-on-error: true
-        run: dotnet run --project tests/Cel.Conformance --configuration Release --no-build -- ../cel-spec/tests/simple/testdata
+        run: dotnet run --project tests/DotnetCel.Conformance --configuration Release --no-build -- ../cel-spec/tests/simple/testdata
 
   docs:
     name: Docs — Astro build
