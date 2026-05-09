@@ -597,7 +597,10 @@ public sealed class ProtoTypeProvider : ITypeProvider
                 return true;
             }
             var clrValue = ToClrForElement(fd, value);
-            if (clrValue is null && fd.FieldType != FieldType.Message && value is not NullValue)
+            // null from a non-null input means conversion failed (range error, type
+            // mismatch, ...) — surface as a construct failure rather than silently leaving
+            // the field at its default.
+            if (clrValue is null && value is not NullValue)
             {
                 return false;
             }
