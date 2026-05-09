@@ -413,6 +413,7 @@ internal static class Stdlib
             try { return CelValue.Of(new CelTimestamp(checked(I(a[0]) * CelDuration.NanosPerSecond))); }
             catch (OverflowException) { return CelValue.Error("timestamp out of range"); }
         });
+        r.Bind("timestamp_to_timestamp", static a => a[0]);
 
         // duration(...)
         r.Bind("string_to_duration", static a =>
@@ -422,6 +423,7 @@ internal static class Stdlib
             if (nanos is null) { return CelValue.Error($"cannot parse duration: {s}"); }
             return CelValue.Of(new CelDuration(nanos.Value));
         });
+        r.Bind("duration_to_duration", static a => a[0]);
     }
 
     private static void Time(FunctionRegistry r)

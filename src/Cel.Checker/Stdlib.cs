@@ -197,10 +197,12 @@ internal static class Stdlib
 
         builder.Function("timestamp",
             new OverloadDecl("string_to_timestamp", [CelTypes.String], CelTypes.Timestamp),
-            new OverloadDecl("int_to_timestamp", [CelTypes.Int], CelTypes.Timestamp));
+            new OverloadDecl("int_to_timestamp", [CelTypes.Int], CelTypes.Timestamp),
+            new OverloadDecl("timestamp_to_timestamp", [CelTypes.Timestamp], CelTypes.Timestamp));
 
         builder.Function("duration",
-            new OverloadDecl("string_to_duration", [CelTypes.String], CelTypes.Duration));
+            new OverloadDecl("string_to_duration", [CelTypes.String], CelTypes.Duration),
+            new OverloadDecl("duration_to_duration", [CelTypes.Duration], CelTypes.Duration));
 
         // ── timestamp / duration accessors ──
         AddTimestampAccessor(builder, "getFullYear", "timestamp_to_year");
@@ -228,6 +230,18 @@ internal static class Stdlib
             new OverloadDecl("timestamp_to_milliseconds", [CelTypes.Timestamp], CelTypes.Int, IsInstance: true),
             new OverloadDecl("timestamp_to_milliseconds_with_tz", [CelTypes.Timestamp, CelTypes.String], CelTypes.Int, IsInstance: true),
             new OverloadDecl("duration_to_milliseconds", [CelTypes.Duration], CelTypes.Int, IsInstance: true));
+
+        // ── type denotations ──
+        // CEL's type system exposes the primitive type names (bool, int, ...) as values of
+        // type `type`, so expressions like `type(x) == int` work. They're pre-registered as
+        // variables here; the evaluator recognises the names and returns the matching
+        // TypeValue at runtime without consulting the activation.
+        foreach (var name in new[] { "bool", "int", "uint", "double", "string", "bytes", "null_type", "list", "map", "type" })
+        {
+            builder.Variable(name, CelTypes.Type);
+        }
+        builder.Variable("google.protobuf.Timestamp", CelTypes.Type);
+        builder.Variable("google.protobuf.Duration", CelTypes.Type);
 
         // ── string membership / search ──
         builder.Function("contains",

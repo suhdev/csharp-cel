@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Cel.Ast;
 using Cel.Diagnostics;
+using Cel.Types;
 using Cel.Values;
 
 namespace Cel.Runtime;
@@ -80,6 +81,28 @@ public sealed class Evaluator
         _ => CelValue.Error("unknown constant"),
     };
 
+    /// <summary>
+    /// Built-in type denotations (<c>bool</c>, <c>int</c>, ..., plus the well-known
+    /// <c>google.protobuf.Timestamp</c> / <c>Duration</c>). Resolved before the activation so
+    /// they always carry the right <see cref="TypeValue"/> regardless of how a host configures
+    /// the env.
+    /// </summary>
+    private static readonly Dictionary<string, CelValue> TypeDenotations = new(StringComparer.Ordinal)
+    {
+        ["bool"] = new TypeValue(CelTypes.Bool),
+        ["int"] = new TypeValue(CelTypes.Int),
+        ["uint"] = new TypeValue(CelTypes.Uint),
+        ["double"] = new TypeValue(CelTypes.Double),
+        ["string"] = new TypeValue(CelTypes.String),
+        ["bytes"] = new TypeValue(CelTypes.Bytes),
+        ["null_type"] = new TypeValue(CelTypes.Null),
+        ["list"] = new TypeValue(CelTypes.List(CelTypes.Dyn)),
+        ["map"] = new TypeValue(CelTypes.Map(CelTypes.Dyn, CelTypes.Dyn)),
+        ["type"] = new TypeValue(CelTypes.Type),
+        ["google.protobuf.Timestamp"] = new TypeValue(CelTypes.Timestamp),
+        ["google.protobuf.Duration"] = new TypeValue(CelTypes.Duration),
+    };
+
     private CelValue VisitIdentifier(IdentifierExpr e, IActivation activation)
     {
         var name = e.Name.Length > 0 && e.Name[0] == '.' ? e.Name[1..] : e.Name;
@@ -87,13 +110,18 @@ public sealed class Evaluator
         // The checker may have resolved this identifier to a qualified name (e.g. `y` in
         // container `x` resolved to `x.y`). Use that name first so the activation key matches
         // the declaration the type checker bound to.
-        if (_ast.ReferenceMap.TryGetValue(e.Id, out var refInfo)
-            && !string.Equals(refInfo.Name, name, StringComparison.Ordinal))
+        var resolvedName = _ast.ReferenceMap.TryGetValue(e.Id, out var refInfo) ? refInfo.Name : name;
+
+        // Built-in type denotations short-circuit any activation lookup.
+        if (TypeDenotations.TryGetValue(resolvedName, out var denotation))
         {
-            if (activation.TryResolve(refInfo.Name, out var rawQualified))
-            {
-                return WrapManagedAware(rawQualified);
-            }
+            return denotation;
+        }
+
+        if (!string.Equals(resolvedName, name, StringComparison.Ordinal)
+            && activation.TryResolve(resolvedName, out var rawQualified))
+        {
+            return WrapManagedAware(rawQualified);
         }
 
         if (activation.TryResolve(name, out var raw))

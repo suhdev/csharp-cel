@@ -304,9 +304,28 @@ public sealed class ProtoTypeProvider : ITypeProvider
     {
         if (fd.IsMap)
         {
-            // Map entries arrive as nested messages with `key:` and `value:` fields. Each entry
-            // is its own TextProtoMessageValue at this level (repeated map entry).
-            return; // TODO: map support
+            // Map entries arrive as repeated nested messages — each `field_name { key: ... value: ... }`
+            // becomes one ApplyTextProtoToField call with a TextProtoMessageValue.
+            if (value is TextProto.TextProtoMessageValue entry)
+            {
+                var dict = (IDictionary)fd.Accessor.GetValue(msg);
+                var keyFd = fd.MessageType.FindFieldByNumber(1);
+                var valueFd = fd.MessageType.FindFieldByNumber(2);
+                var keyText = entry.Message.FirstOrNull("key")?.Value;
+                var valueText = entry.Message.FirstOrNull("value")?.Value;
+                if (keyText is null || valueText is null)
+                {
+                    return;
+                }
+                var k = ConvertTextProto(keyFd, keyText);
+                var v = ConvertTextProto(valueFd, valueText);
+                if (k is null || v is null)
+                {
+                    return;
+                }
+                dict[k] = v;
+            }
+            return;
         }
         if (fd.IsRepeated)
         {
@@ -562,8 +581,14 @@ public sealed class ProtoTypeProvider : ITypeProvider
                 }
                 foreach (var elem in lv.Elements)
                 {
+                    // Null elements in a repeated message field are pruned per CEL spec
+                    // (proto repeated fields can't hold null).
+                    if (elem is NullValue)
+                    {
+                        continue;
+                    }
                     var converted = ToClrForElement(fd, elem);
-                    if (converted is null && elem is not NullValue)
+                    if (converted is null)
                     {
                         return false;
                     }
@@ -715,20 +740,35 @@ public sealed class ProtoTypeProvider : ITypeProvider
             DoubleValue d => new PbDoubleValue { Value = d.Value },
             StringValue s => new PbStringValue { Value = s.Value },
             BytesValue b => new PbBytesValue { Value = ByteString.CopyFrom(b.Value.ToArray()) },
+            // CEL list / map assigned to an Any pack as the JSON-shaped well-known types.
+            ListValue lv => ToWellKnownListValue(lv),
+            MapValue mv => ToWellKnownStruct(mv),
             ObjectValue o when o.Native is IMessage im => im,
             _ => null,
         };
         return toPack is null ? null : PbAny.Pack(toPack);
     }
 
+    /// <summary>Largest int64 / uint64 that round-trips through double without loss (2^53).</summary>
+    private const long JsonSafeIntegerLimit = 1L << 53;
+
     private static global::Google.Protobuf.WellKnownTypes.Value ToWellKnownValue(CelValue value) => value switch
     {
         NullValue => new global::Google.Protobuf.WellKnownTypes.Value { NullValue = global::Google.Protobuf.WellKnownTypes.NullValue.NullValue },
         BoolValue b => new global::Google.Protobuf.WellKnownTypes.Value { BoolValue = b.Value },
-        IntValue i => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = i.Value },
-        UintValue u => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = u.Value },
+        // Per proto3 JSON canonical mapping: ints / uints whose magnitude exceeds 2^53 (i.e.
+        // can't be exactly represented in a double) encode as quoted strings to preserve
+        // precision through the JSON intermediate.
+        IntValue i => Math.Abs(i.Value) > JsonSafeIntegerLimit
+            ? new global::Google.Protobuf.WellKnownTypes.Value { StringValue = i.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            : new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = i.Value },
+        UintValue u => u.Value > (ulong)JsonSafeIntegerLimit
+            ? new global::Google.Protobuf.WellKnownTypes.Value { StringValue = u.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            : new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = u.Value },
         DoubleValue d => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = d.Value },
         StringValue s => new global::Google.Protobuf.WellKnownTypes.Value { StringValue = s.Value },
+        // Bytes encode as base64 strings in JSON.
+        BytesValue b => new global::Google.Protobuf.WellKnownTypes.Value { StringValue = Convert.ToBase64String(b.Value.AsSpan()) },
         ListValue lv => new global::Google.Protobuf.WellKnownTypes.Value { ListValue = ToWellKnownListValue(lv) },
         MapValue mv => new global::Google.Protobuf.WellKnownTypes.Value { StructValue = ToWellKnownStruct(mv) },
         ObjectValue o when o.Native is IMessage im => UnwrapToValue(im),
