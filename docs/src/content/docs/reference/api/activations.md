@@ -10,7 +10,7 @@ values at evaluation time.
 ## The interface
 
 ```csharp
-namespace Cel.Runtime;
+namespace DotnetCel.Runtime;
 
 public interface IActivation
 {

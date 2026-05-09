@@ -13,7 +13,7 @@ up, what it does to type-checking, and how to use it deliberately.
 trust me; resolve at runtime." It's similar in spirit to TypeScript's `any`
 or Python's untyped values.
 
-In `Cel.Types.CelTypes`:
+In `DotnetCel.Types.CelTypes`:
 
 ```csharp
 public static readonly CelType Dyn = new DynType();
@@ -105,7 +105,7 @@ diagnostics. None of that protection is available once you've widened to
 The full algorithm — most-general type, join-on-conflict, parametric
 unification — is documented in
 [`langdef.md`](https://github.com/google/cel-spec/blob/master/doc/langdef.md#gradual-type-checking).
-The .NET checker implements it in `Cel.Checker.TypeAlgebra`; you do not need
+The .NET checker implements it in `DotnetCel.Checker.TypeAlgebra`; you do not need
 to understand the algorithm to use the language, but the section is short
 and worth reading if you ever puzzle over a checker decision.
 

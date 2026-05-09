@@ -10,13 +10,13 @@ extensions. Evaluation walks the AST against an `IActivation`.
 ## Signature
 
 ```csharp
-namespace Cel;
+namespace DotnetCel;
 
 [RequiresUnreferencedCode("Field access on host objects uses reflection; runtime types may be trimmed.")]
 public sealed class CompiledProgram
 {
     public CheckedAst Ast { get; }
-    public Cel.Types.CelType ResultType { get; }
+    public DotnetCel.Types.CelType ResultType { get; }
 
     public CelValue EvaluateRaw(IActivation activation);
     public object? Eval(IActivation activation);
@@ -46,7 +46,7 @@ Returns the raw `CelValue` — useful when you need to distinguish nulls,
 optionals, errors, and unknowns programmatically:
 
 ```csharp
-using Cel.Values;
+using DotnetCel.Values;
 
 CelValue v = program.EvaluateRaw(activation);
 return v switch

@@ -3,7 +3,7 @@ title: Extensions catalog
 description: Every shipped extension, what it adds, and how to enable it.
 ---
 
-`Cel.Extensions` ships eight optional bundles. Each is a singleton that
+`DotnetCel.Extensions` ships eight optional bundles. Each is a singleton that
 adds declarations, runtime impls, and (sometimes) parser macros.
 Enable with `.Use(...)` on the env builder:
 
@@ -138,7 +138,7 @@ its result.
 
 ## Network
 
-Network-address types and predicates. The `Cel.Extensions.NetworkExtension`
+Network-address types and predicates. The `DotnetCel.Extensions.NetworkExtension`
 adds `ip`, `cidr`, `family`, `containsIP`, `containsCIDR`.
 
 ```cel

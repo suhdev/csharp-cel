@@ -18,8 +18,8 @@ A function has three parts:
 3. A **runtime implementation** for each overload id.
 
 ```csharp
-using Cel;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Types;
 
 var env = CelEnv.NewBuilder()
     .Function("greet",

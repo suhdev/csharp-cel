@@ -10,7 +10,7 @@ library is internally one; every shipped extension (`StringsExtension`,
 ## The interface
 
 ```csharp
-namespace Cel;
+namespace DotnetCel;
 
 public interface ICelExtension
 {
@@ -71,9 +71,9 @@ instance is independent.
 ## A complete example
 
 ```csharp
-using Cel;
-using Cel.Types;
-using Cel.Values;
+using DotnetCel;
+using DotnetCel.Types;
+using DotnetCel.Values;
 
 public sealed class GreetExtension : ICelExtension
 {

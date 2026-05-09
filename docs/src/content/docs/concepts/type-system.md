@@ -9,7 +9,7 @@ meaning whether the host is Go, C++, Java, or .NET.
 
 ## The primitive types
 
-| CEL | `Cel.Types.CelTypes` | Runtime `CelValue` | Native |
+| CEL | `DotnetCel.Types.CelTypes` | Runtime `CelValue` | Native |
 |-----|----------------------|--------------------|--------|
 | `bool` | `Bool` | `BoolValue` | `bool` |
 | `int` | `Int` | `IntValue` | `long` (signed 64-bit) |

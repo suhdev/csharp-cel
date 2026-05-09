@@ -12,7 +12,7 @@ messages, generated DTOs, virtual types backed by JSON-flavoured maps.
 ## The interface
 
 ```csharp
-namespace Cel;
+namespace DotnetCel;
 
 public interface ITypeProvider
 {
@@ -122,7 +122,7 @@ reflection-based POCO adapter for any object value.
 ## Implementing a provider
 
 The reference implementation lives in
-[`tests/Cel.Conformance/ProtoTypeProvider.cs`](https://github.com/your-org/cel-csharp/blob/main/tests/Cel.Conformance/ProtoTypeProvider.cs).
+[`tests/DotnetCel.Conformance/ProtoTypeProvider.cs`](https://github.com/your-org/cel-csharp/blob/main/tests/DotnetCel.Conformance/ProtoTypeProvider.cs).
 It's ~700 lines and handles the entire proto2/proto3 surface: presence
 semantics, wrapper unwrapping, well-known types, oneofs, enum projection,
 NaN propagation. Read it as the canonical worked example.

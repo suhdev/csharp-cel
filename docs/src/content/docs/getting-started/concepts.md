@@ -26,7 +26,7 @@ var ok = (bool)_program.Eval(activation)!;
 ## 2. CEL has its own type system
 
 CEL types (`int`, `string`, `list<T>`, `map<K, V>`, `Foo.Bar`, `dyn`, ...) live
-in `Cel.Types.CelTypes`. They are **not** CLR types — they're declared on the
+in `DotnetCel.Types.CelTypes`. They are **not** CLR types — they're declared on the
 env and the checker uses them to validate expressions before runtime. The
 runtime then represents values as `CelValue` (a closed sum: `IntValue`,
 `StringValue`, `ListValue`, ...).

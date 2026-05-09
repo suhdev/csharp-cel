@@ -94,14 +94,14 @@ The 12 `strong_proto*/*` tests pass.
 ## Run the harness yourself
 
 ```sh
-dotnet run --project tests/Cel.Conformance \
+dotnet run --project tests/DotnetCel.Conformance \
     -- /path/to/cel-spec/tests/simple/testdata
 ```
 
 Filter to a subset:
 
 ```sh
-dotnet run --project tests/Cel.Conformance \
+dotnet run --project tests/DotnetCel.Conformance \
     -- /path/to/cel-spec/tests/simple/testdata \
     --only basic comparisons enums
 ```

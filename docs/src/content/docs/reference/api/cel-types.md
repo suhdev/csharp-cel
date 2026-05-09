@@ -3,7 +3,7 @@ title: CelType / CelTypes
 description: The static type system — every type record and the factory helpers for constructing them.
 ---
 
-`Cel.Types.CelType` is the abstract base for the static type system. The
+`DotnetCel.Types.CelType` is the abstract base for the static type system. The
 checker decorates every AST node with one. Construct types via the
 factory methods on `CelTypes`, not directly — that keeps singleton
 instances reference-equal.
@@ -11,7 +11,7 @@ instances reference-equal.
 ## The base record
 
 ```csharp
-namespace Cel.Types;
+namespace DotnetCel.Types;
 
 public abstract record CelType
 {
@@ -46,7 +46,7 @@ public sealed record AbstractType(string TypeName, ImmutableArray<CelType> Param
 ## `CelTypes` factory helpers
 
 ```csharp
-namespace Cel.Types;
+namespace DotnetCel.Types;
 
 public static class CelTypes
 {
@@ -121,7 +121,7 @@ collide; pick fully qualified names (`acme.v1.User` rather than `User`).
 
 ## Assignability
 
-The checker uses `Cel.Checker.TypeAlgebra.IsAssignable(from, to)`:
+The checker uses `DotnetCel.Checker.TypeAlgebra.IsAssignable(from, to)`:
 
 | From | To | Assignable? |
 |------|----|-------------|

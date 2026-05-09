@@ -46,9 +46,9 @@ works on attribute selects. A macro can rewrite arbitrary `expr` cases.
 
 ```csharp
 using System.Collections.Immutable;
-using Cel;
-using Cel.Ast;
-using Cel.Values;
+using DotnetCel;
+using DotnetCel.Ast;
+using DotnetCel.Values;
 
 public sealed class DefaultMacroExtension : ICelExtension
 {
@@ -103,7 +103,7 @@ The runtime never sees the macro — only the rewritten AST.
   `NewLiteral`, etc. — that allocate the right AST shape with the right
   ids.
 
-(See the source under `Cel.Core/CelMacro.cs` for the full helper set.)
+(See the source under `DotnetCel.Core/CelMacro.cs` for the full helper set.)
 
 ## How macro expansion fits into the pipeline
 

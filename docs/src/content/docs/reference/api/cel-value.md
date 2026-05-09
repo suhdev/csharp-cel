@@ -3,7 +3,7 @@ title: CelValue
 description: The runtime value sum type — every value the evaluator manipulates is one of these.
 ---
 
-`Cel.Values.CelValue` is an `abstract record` whose subtypes form a closed
+`DotnetCel.Values.CelValue` is an `abstract record` whose subtypes form a closed
 sum. Every value the evaluator produces or consumes is exactly one of
 these types.
 
@@ -98,11 +98,11 @@ without throwing, pattern-match on the `ErrorValue` instead.
 
 `CelValue` records use C#'s built-in record equality by default, but CEL
 semantics differ in important ways (cross-numeric `1 == 1.0`, NaN
-asymmetry, list/map structural compare). Use `Cel.Runtime.CelEquality`
+asymmetry, list/map structural compare). Use `DotnetCel.Runtime.CelEquality`
 for any "is the CEL spec semantics" comparison:
 
 ```csharp
-Cel.Runtime.CelEquality.Equals(CelValue.Of(1L), CelValue.Of(1.0));
+DotnetCel.Runtime.CelEquality.Equals(CelValue.Of(1L), CelValue.Of(1.0));
 // → true (CEL says yes)
 
 CelValue.Of(1L) == CelValue.Of(1.0);

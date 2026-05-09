@@ -29,14 +29,14 @@ You need:
 ## A minimal proto type provider
 
 The full implementation lives in
-`tests/Cel.Conformance/ProtoTypeProvider.cs` and handles wrapper types,
+`tests/DotnetCel.Conformance/ProtoTypeProvider.cs` and handles wrapper types,
 well-known types (`Any`, `Value`, `ListValue`, `Struct`, `Timestamp`,
 `Duration`), and proto2/proto3 presence rules. Here's the skeleton:
 
 ```csharp
-using Cel;
-using Cel.Types;
-using Cel.Values;
+using DotnetCel;
+using DotnetCel.Types;
+using DotnetCel.Values;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 
@@ -214,5 +214,5 @@ list.
 - [Conformance](/reference/conformance/) — proto2 / proto3 / wrappers /
   dynamic pass rates.
 - [The reference
-  implementation](https://github.com/your-org/cel-csharp/blob/main/tests/Cel.Conformance/ProtoTypeProvider.cs)
+  implementation](https://github.com/your-org/cel-csharp/blob/main/tests/DotnetCel.Conformance/ProtoTypeProvider.cs)
   — production-quality starting point you can copy.

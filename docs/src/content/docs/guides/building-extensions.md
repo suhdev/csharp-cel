@@ -27,9 +27,9 @@ Three halves: declarations, runtime impls, and (optional) parser macros.
 A `weather` extension that adds two functions and a small helper macro.
 
 ```csharp
-using Cel;
-using Cel.Types;
-using Cel.Values;
+using DotnetCel;
+using DotnetCel.Types;
+using DotnetCel.Values;
 
 public sealed class WeatherExtension : ICelExtension
 {
@@ -167,7 +167,7 @@ merges overloads under the same function name; ids must remain unique.)
 
 ## What's bundled
 
-`Cel.Extensions` ships these out of the box:
+`DotnetCel.Extensions` ships these out of the box:
 
 - `StringsExtension` — `replace`, `split`, `format`, `quote`, ...
 - `MathExtension` — `abs`, `greatest`, `least`, `bitAnd`, ...

@@ -18,22 +18,22 @@ The runtime ships as five packages plus an optional extensions bundle:
 
 | Package | What it contains |
 |---------|------------------|
-| `Cel` | Public façade: `CelExpression`, `CompiledProgram`. Depends on the next four. |
-| `Cel.Core` | AST, type system, value model, `ITypeProvider` / `ICelExtension` interfaces. |
-| `Cel.Parser` | Lexer + Pratt parser, macro expansion. |
-| `Cel.Checker` | Type checker, declarations, overload resolution, `CelEnv`. |
-| `Cel.Runtime` | Tree-walking evaluator, activations, POCO adapter, stdlib. |
-| `Cel.Extensions` | Optional: `strings`, `math`, `encoders`, `sets`, `optionals`, `bindings`, `network`, `block`. |
+| `DotnetCel` | Public façade: `CelExpression`, `CompiledProgram`. Depends on the next four. |
+| `DotnetCel.Core` | AST, type system, value model, `ITypeProvider` / `ICelExtension` interfaces. |
+| `DotnetCel.Parser` | Lexer + Pratt parser, macro expansion. |
+| `DotnetCel.Checker` | Type checker, declarations, overload resolution, `CelEnv`. |
+| `DotnetCel.Runtime` | Tree-walking evaluator, activations, POCO adapter, stdlib. |
+| `DotnetCel.Extensions` | Optional: `strings`, `math`, `encoders`, `sets`, `optionals`, `bindings`, `network`, `block`. |
 
 Install via the .NET CLI:
 
 ```sh
-dotnet add package Cel
-dotnet add package Cel.Extensions   # optional
+dotnet add package DotnetCel
+dotnet add package DotnetCel.Extensions   # optional
 ```
 
-`Cel` transitively pulls in `Cel.Core`, `Cel.Parser`, `Cel.Checker`, and
-`Cel.Runtime`, so most projects only need the first one.
+`DotnetCel` transitively pulls in `DotnetCel.Core`, `DotnetCel.Parser`, `DotnetCel.Checker`, and
+`DotnetCel.Runtime`, so most projects only need the first one.
 
 ## Project file
 
@@ -47,8 +47,8 @@ If you prefer hand-editing your `.csproj`:
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Cel" Version="0.1.*" />
-    <PackageReference Include="Cel.Extensions" Version="0.1.*" />
+    <PackageReference Include="DotnetCel" Version="0.1.*" />
+    <PackageReference Include="DotnetCel.Extensions" Version="0.1.*" />
   </ItemGroup>
 </Project>
 ```
@@ -61,8 +61,8 @@ lets you take advantage of C# 14 features in your own glue code.
 Drop this in `Program.cs`:
 
 ```csharp
-using Cel;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Types;
 
 var env = CelEnv.NewBuilder()
     .Variable("name", CelTypes.String)

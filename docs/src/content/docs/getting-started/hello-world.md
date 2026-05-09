@@ -23,8 +23,8 @@ types of the variables your expression can reference, plus any extra functions
 or extensions.
 
 ```csharp
-using Cel;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Types;
 
 var env = CelEnv.NewBuilder()
     .Variable("account", CelTypes.Object("Account"))

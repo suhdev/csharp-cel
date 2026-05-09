@@ -9,8 +9,8 @@ model](/concepts/evaluation-model/) page. Each section is a recipe.
 ## Recipe: simplest possible program
 
 ```csharp
-using Cel;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Types;
 
 var env = CelEnv.NewBuilder()
     .Variable("x", CelTypes.Int)
@@ -150,8 +150,8 @@ full `CelValue` (e.g. to distinguish `null` from "key not present"), use
 `EvaluateRaw`:
 
 ```csharp
-using Cel.Runtime;
-using Cel.Values;
+using DotnetCel.Runtime;
+using DotnetCel.Values;
 
 CelValue raw = program.EvaluateRaw(new MapActivation(bindings));
 

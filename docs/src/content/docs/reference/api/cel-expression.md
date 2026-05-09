@@ -9,7 +9,7 @@ returns a reusable `CompiledProgram`.
 ## Signature
 
 ```csharp
-namespace Cel;
+namespace DotnetCel;
 
 public static class CelExpression
 {
@@ -24,14 +24,14 @@ public static class CelExpression
 - **Type-checks** the resulting AST against `env`'s declared variables,
   functions, type provider, and container.
 - Returns a `CompiledProgram` if both phases succeed.
-- **Throws** `Cel.Diagnostics.CelCompileException` (with the full diagnostic
+- **Throws** `DotnetCel.Diagnostics.CelCompileException` (with the full diagnostic
   list) if either phase fails.
 
 ## Example
 
 ```csharp
-using Cel;
-using Cel.Types;
+using DotnetCel;
+using DotnetCel.Types;
 
 var env = CelEnv.NewBuilder()
     .Variable("x", CelTypes.Int)
