@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <PackageId>CelDotNet.Checker</PackageId>
     <Description>CEL static type checker: declarations, overload resolution, gradual typing.</Description>
     <RootNamespace>Cel</RootNamespace>
   </PropertyGroup>

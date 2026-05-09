@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <PackageId>CelDotNet.Core</PackageId>
     <Description>Common Expression Language: AST, type system, value model, diagnostics. Foundation library with no external dependencies.</Description>
     <RootNamespace>Cel</RootNamespace>
   </PropertyGroup>
