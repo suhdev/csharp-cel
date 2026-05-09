@@ -306,7 +306,7 @@ internal static class Stdlib
     private static void Conversions(FunctionRegistry r)
     {
         // int(...)
-        r.Bind("int_to_int", static a => a[0]);
+        r.Bind("int_to_int", static a => a[0] is EnumValue ev ? new IntValue(ev.Number) : a[0]);
         r.Bind("uint_to_int", static a =>
         {
             var u = U(a[0]);
@@ -578,7 +578,12 @@ internal static class Stdlib
 
     // ── helpers ──
 
-    private static long I(CelValue v) => ((IntValue)v).Value;
+    private static long I(CelValue v) => v switch
+    {
+        IntValue i => i.Value,
+        EnumValue e => e.Number,
+        _ => throw new InvalidCastException($"expected int, got {v.GetType().Name}"),
+    };
     private static ulong U(CelValue v) => ((UintValue)v).Value;
     private static double D(CelValue v) => ((DoubleValue)v).Value;
     private static string S(CelValue v) => ((StringValue)v).Value;

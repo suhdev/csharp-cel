@@ -44,6 +44,7 @@ public static class ConformanceRunner
         = Provider.EnumConstants().ToList();
     private static readonly Dictionary<string, long> EnumByName
         = EnumConstants.ToDictionary(e => e.Name, e => e.Value, StringComparer.Ordinal);
+    private static readonly ProtoEnumExtension EnumExtension = new(Provider.EnumDescriptors().ToList());
 
     private static ProtoTypeProvider BuildProvider()
     {
@@ -142,7 +143,8 @@ public static class ConformanceRunner
                     case TestOutcome.Pass: passed++; break;
                     case TestOutcome.Fail:
                         failed++;
-                        if (failures.Count < 5) { failures.Add(result); }
+                        var maxSamples = Environment.GetEnvironmentVariable("CEL_FULL_FAILURES") == "1" ? int.MaxValue : 5;
+                        if (failures.Count < maxSamples) { failures.Add(result); }
                         break;
                     case TestOutcome.Skip: skipped++; break;
                 }
@@ -151,9 +153,31 @@ public static class ConformanceRunner
         return new FileResult(name, passed + failed + skipped, passed, failed, skipped, failures);
     }
 
+    /// <summary>
+    /// Tests that this implementation cannot satisfy for principled reasons. Each entry pairs
+    /// a (section, test) key with a reason. Currently used to opt out of <c>enums.textproto</c>
+    /// legacy tests that explicitly assert <c>type(EnumValue) == int</c>: this implementation
+    /// adopts CEL's strong enum semantics, where <c>type(EnumValue)</c> is the qualified enum
+    /// type. Both behaviors are documented in the corpus under sibling <c>strong_*</c> sections,
+    /// which we pass.
+    /// </summary>
+    private static readonly Dictionary<(string File, string Section, string Test), string> ModeIncompatibleSkips = new()
+    {
+        [("enums", "legacy_proto2", "type_global")] = "strong enum mode: type(EnumValue) is the enum type, not int",
+        [("enums", "legacy_proto2", "type_nested")] = "strong enum mode: type(EnumValue) is the enum type, not int",
+        [("enums", "legacy_proto2", "field_type")] = "strong enum mode: type(EnumValue) is the enum type, not int",
+        [("enums", "legacy_proto3", "type_global")] = "strong enum mode: type(EnumValue) is the enum type, not int",
+        [("enums", "legacy_proto3", "type_nested")] = "strong enum mode: type(EnumValue) is the enum type, not int",
+        [("enums", "legacy_proto3", "field_type")] = "strong enum mode: type(EnumValue) is the enum type, not int",
+    };
+
     private static TestResult RunTest(string fileName, string sectionName, TextProtoMessage test)
     {
         var name = test.Str("name") ?? "<unnamed>";
+        if (ModeIncompatibleSkips.TryGetValue((fileName, sectionName, name), out var skipReason))
+        {
+            return new(fileName, sectionName, name, TestOutcome.Skip, skipReason);
+        }
         if (test.Bool("disable_check") == true)
         {
             return new(fileName, sectionName, name, TestOutcome.Skip, "disable_check");
@@ -189,7 +213,8 @@ public static class ConformanceRunner
             .Use(BindingsExtension.Instance)
             .Use(OptionalsExtension.Instance)
             .Use(NetworkExtension.Instance)
-            .Use(BlockExtension.Instance);
+            .Use(BlockExtension.Instance)
+            .Use(EnumExtension);
         // Pre-register every reachable proto enum constant as an int variable so
         // `pkg.MyEnum.VALUE` resolves through normal qualified-name lookup.
         foreach (var (enumName, _) in EnumConstants)
@@ -218,7 +243,13 @@ public static class ConformanceRunner
         var bindings = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var (enumName, enumValue) in EnumConstants)
         {
-            bindings[enumName] = enumValue;
+            // Strip the trailing ".VALUE" off the qualified name to recover the enum type name
+            // (e.g. "cel.expr.conformance.proto2.GlobalEnum.GAR" -> "...GlobalEnum"). This is
+            // the cheapest way to thread enum identity through to the binding without giving
+            // up the simple (Name, Value) pair shape.
+            var dot = enumName.LastIndexOf('.');
+            var enumTypeName = dot >= 0 ? enumName[..dot] : enumName;
+            bindings[enumName] = new EnumValue(enumTypeName, enumValue);
         }
         foreach (var b in test.SubAll("bindings"))
         {

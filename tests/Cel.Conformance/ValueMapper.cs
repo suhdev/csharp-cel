@@ -42,7 +42,9 @@ internal static class ValueMapper
                 case "enum_value":
                 {
                     var enumMsg = ((TextProtoMessageValue)f.Value).Message;
-                    return CelValue.Of(enumMsg.Int("value") ?? 0);
+                    var num = enumMsg.Int("value") ?? 0;
+                    var typeName = enumMsg.Str("type");
+                    return typeName is not null ? new EnumValue(typeName, num) : CelValue.Of(num);
                 }
                 case "object_value":
                 {

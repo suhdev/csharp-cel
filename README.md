@@ -18,16 +18,23 @@ bool ok = (bool)program.Eval(new {
 })!;
 ```
 
+## Documentation
+
+Full docs live under [`docs/`](./docs) — Astro Starlight site with
+getting-started, concepts, guides, and a complete API reference. Run
+locally with `cd docs && npm install && npm run dev`.
+
 ## Layout
 
 - `src/Cel.Core` — AST, type system, value model, diagnostics. No external deps.
 - `src/Cel.Parser` — lexer + Pratt parser, macro expansion.
 - `src/Cel.Checker` — type checker, declarations, overload resolution.
 - `src/Cel.Runtime` — tree-walking evaluator, activations, POCO adapter, stdlib.
-- `src/Cel.Extensions` — strings, math, encoders, sets.
+- `src/Cel.Extensions` — strings, math, encoders, sets, optionals, bindings, network, block.
 - `src/Cel` — public façade (`CelExpression`, `CompiledProgram`).
 - `tests/Cel.UnitTests` — unit tests (167 cases).
 - `tests/Cel.Conformance` — runs the cel-spec textproto conformance corpus.
+- `docs/` — Astro Starlight documentation site.
 
 ## Conformance
 
@@ -45,19 +52,15 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 
 | Category | Status |
 |----------|--------|
-| `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
-| `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **82–96%** |
-| `basic`, `bindings_ext`, `comparisons`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `network_ext`, `plumbing`, `string` | **100%** |
-| `dynamic`, `conversions`, `math_ext`, `block_ext`, `string_ext`, `wrappers`, `timestamps`, `macros2`, `proto3`, `fields`, `parse` | **83–98%** |
-| `namespace`, `optionals`, `proto2`, `enums`, `encoders_ext` | **73–80%** |
+| `basic`, `bindings_ext`, `comparisons`, `enums`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `network_ext`, `parse`, `plumbing`, `string` | **100%** |
+| `block_ext`, `conversions`, `dynamic`, `fields`, `macros2`, `math_ext`, `proto3`, `string_ext`, `timestamps`, `wrappers` | **85–98%** |
+| `encoders_ext`, `namespace`, `optionals`, `proto2` | **73–89%** |
 | `proto2_ext`, `type_deduction`, `unknowns` | **0%** — feature gaps |
-| **Total** | **2066 / 2263 ran (91%) over 2454 cases (191 skipped)** |
+| **Total** | **2082 / 2257 ran (92%) over 2454 cases (197 skipped)** |
 
 ### Known gaps
 
-- **Proto support** — `Cel.Runtime` has no `TypeProvider` for proto messages, so `pkg.Type{...}` constructs are flattened to maps and field access on object types defers to `dyn`. Lands when the conformance harness needs it.
-- **`cel.bind` / `cel.@block`** — parser-level macros need an extension hook. Currently macros are baked into `Parser.cs`.
-- **Heterogeneous numeric ordering** (`1 < 2.5`) — only same-type ordering shipped.
-- **Wrapper unwrapping at runtime** — `google.protobuf.BoolValue` etc. currently surface as opaque objects.
-- **Optional select / index runtime** — parsed but not yet dispatched.
+- **`unknowns`** — partial-evaluation infrastructure. The runtime represents unknowns internally (`UnknownValue`); public API for emitting them from activations is pending.
+- **`type_deduction`** — `typed_result` matcher in conformance harness not yet wired up; `CompiledProgram.ResultType` exists but the spec corpus doesn't drive it.
+- **`proto2_ext`** — proto2 message extensions (the `extend` block) — parser + provider lookup not yet implemented.
 - **Reflection POCO adapter** — annotated `[RequiresUnreferencedCode]`; SourceGen variant pending for AOT/trim.

@@ -187,6 +187,18 @@ public sealed record OptionalValue(CelValue? Inner) : CelValue
     public static OptionalValue Of(CelValue inner) => new(inner);
 }
 
+/// <summary>
+/// A proto enum value carrying its declared enum type's fully qualified name. Distinct from
+/// <see cref="IntValue"/> so <c>type(x)</c> can report the enum identity, but compares equal
+/// to integers (and to other enums) by numeric value — matching CEL's "strong enum" semantics
+/// where enums are typed for reflection but value-compatible with <c>int</c>.
+/// </summary>
+public sealed record EnumValue(string TypeName, long Number) : CelValue
+{
+    public override CelType Type => CelTypes.Object(TypeName);
+    public override object ToClrObject() => Number;
+}
+
 public sealed record TypeValue(CelType Inner) : CelValue
 {
     public override CelType Type => CelTypes.Type;

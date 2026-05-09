@@ -1,0 +1,17 @@
+/* Brand accent — keep close to the .NET / proto teal palette so it reads as a tools-y site. */
+:root {
+  --sl-color-accent-low: #0b3d3a;
+  --sl-color-accent: #14b8a6;
+  --sl-color-accent-high: #99f6e4;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ccfbf1;
+  --sl-color-accent: #0d9488;
+  --sl-color-accent-high: #115e59;
+}
+
+/* Make inline code feel less heavy — it's everywhere in this manual. */
+:not(pre) > code {
+  font-size: 0.95em;
+}

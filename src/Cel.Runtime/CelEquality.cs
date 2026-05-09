@@ -24,6 +24,11 @@ public static class CelEquality
         if (a is DoubleValue ad && double.IsNaN(ad.Value)) { return false; }
         if (b is DoubleValue bd && double.IsNaN(bd.Value)) { return false; }
 
+        // Treat enums as int-compatible for value comparisons. Enum-vs-enum still requires the
+        // same numeric value — type identity is informational and surfaces via type(), not ==.
+        if (a is EnumValue ea) { a = new IntValue(ea.Number); }
+        if (b is EnumValue eb) { b = new IntValue(eb.Number); }
+
         // Cross-numeric handles int/uint/double in any pairing.
         if (IsNumeric(a) && IsNumeric(b))
         {
@@ -60,6 +65,8 @@ public static class CelEquality
     /// </summary>
     public static int Compare(CelValue a, CelValue b)
     {
+        if (a is EnumValue ea) { a = new IntValue(ea.Number); }
+        if (b is EnumValue eb) { b = new IntValue(eb.Number); }
         if (IsNumeric(a) && IsNumeric(b))
         {
             return CompareNumeric(a, b);

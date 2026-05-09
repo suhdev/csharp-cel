@@ -1,0 +1,95 @@
+---
+title: CEL for .NET
+description: An idiomatic C# / .NET 10 implementation of the Common Expression Language.
+template: splash
+hero:
+  tagline: Compile, type-check, and evaluate CEL against your POCOs — no protobuf required.
+  actions:
+    - text: Get started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: Browse the API
+      link: /reference/api/cel-expression/
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why this exists
+
+The [Common Expression Language](https://github.com/google/cel-spec) is the
+"safe expression" choice for policy, config, and rule engines — small, sandboxed,
+non-Turing-complete, with a stable spec and a corpus of conformance tests.
+
+`Cel.NET` is a clean-room C# / .NET 10 port of the spec. It runs **2,082 of the
+2,257 applicable cel-spec conformance cases (92%)**, ships as five small
+libraries with no required external dependencies, and treats POCOs as
+first-class — protobuf is optional.
+
+<CardGrid>
+  <Card title="Idiomatic C#" icon="seti:c-sharp">
+    Records, init-only properties, pattern matching, immutable builders. No
+    generated parser; the lexer and Pratt parser are hand-rolled and read like
+    a textbook.
+  </Card>
+  <Card title="POCO-first" icon="document">
+    Bind plain CLR objects directly — `program.Eval(new { user, request })`.
+    Reflection adapter for the easy path; `ITypeProvider` for proto and other
+    custom type systems.
+  </Card>
+  <Card title="Compile once, eval many" icon="rocket">
+    `CelExpression.Compile(...)` returns a `CompiledProgram` you reuse across
+    millions of evaluations. The static type check happens once.
+  </Card>
+  <Card title="Pluggable extensions" icon="puzzle">
+    `strings`, `math`, `encoders`, `sets`, `optionals`, `bindings`, `network`,
+    `block` — all opt-in. Bring your own via the `ICelExtension` interface.
+  </Card>
+</CardGrid>
+
+## Quick taste
+
+```csharp
+using Cel;
+using Cel.Extensions;
+using Cel.Types;
+
+var env = CelEnv.NewBuilder()
+    .Use(StringsExtension.Instance)
+    .Use(MathExtension.Instance)
+    .Variable("user", CelTypes.Object("User"))
+    .Build();
+
+var program = CelExpression.Compile(
+    "user.name.startsWith('a') && math.abs(user.age) >= 18",
+    env);
+
+bool ok = (bool)program.Eval(new {
+    user = new { Name = "alice", Age = 25 }
+})!;
+```
+
+## Where to next
+
+<CardGrid>
+  <Card title="New here?" icon="open-book">
+    Start with the [installation guide](/getting-started/installation/), then
+    walk through [Hello, world](/getting-started/hello-world/) and the [core
+    concepts](/getting-started/concepts/) tour.
+  </Card>
+  <Card title="Building something concrete?" icon="setting">
+    Jump straight to the guides on [working with
+    POCOs](/guides/working-with-pocos/), [proto
+    messages](/guides/working-with-protos/), or [custom
+    functions](/guides/declaring-functions/).
+  </Card>
+  <Card title="Need API details?" icon="list-format">
+    The [reference](/reference/api/cel-expression/) covers every public type,
+    overload, and the language standard library.
+  </Card>
+  <Card title="Curious about coverage?" icon="approve-check-circle">
+    See the [conformance status](/reference/conformance/) for a pass-rate
+    breakdown across all cel-spec test files.
+  </Card>
+</CardGrid>

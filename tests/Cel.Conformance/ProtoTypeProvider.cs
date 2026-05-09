@@ -56,6 +56,41 @@ public sealed class ProtoTypeProvider : ITypeProvider
         _byName.ContainsKey(typeName) ? CelTypes.Object(typeName) : null;
 
     /// <summary>
+    /// Every <see cref="EnumDescriptor"/> reachable from registered message descriptors
+    /// (their nested enums) and the file-level top-level enums. Used by the conformance
+    /// harness to register enum-constructor functions and constants.
+    /// </summary>
+    public IEnumerable<EnumDescriptor> EnumDescriptors()
+    {
+        var seen = new HashSet<EnumDescriptor>();
+        foreach (var desc in _byName.Values)
+        {
+            foreach (var e in desc.EnumTypes)
+            {
+                if (seen.Add(e))
+                {
+                    yield return e;
+                }
+            }
+        }
+        var seenFiles = new HashSet<FileDescriptor>();
+        foreach (var desc in _byName.Values)
+        {
+            if (!seenFiles.Add(desc.File))
+            {
+                continue;
+            }
+            foreach (var e in desc.File.EnumTypes)
+            {
+                if (seen.Add(e))
+                {
+                    yield return e;
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Enumerate every (qualified-name, numeric-value) pair for the enum constants reachable
     /// from registered message descriptors. Used to declare enum constants as integer
     /// variables in the env so <c>GlobalEnum.GAZ</c> resolves like any qualified variable.
@@ -511,7 +546,8 @@ public sealed class ProtoTypeProvider : ITypeProvider
         if (fd.IsMap || fd.IsRepeated) { return raw; }
         if (fd.FieldType == FieldType.Enum)
         {
-            return Convert.ToInt64(raw, System.Globalization.CultureInfo.InvariantCulture);
+            var num = Convert.ToInt64(raw, System.Globalization.CultureInfo.InvariantCulture);
+            return new EnumValue(fd.EnumType.FullName, num);
         }
         return raw;
     }
@@ -645,7 +681,10 @@ public sealed class ProtoTypeProvider : ITypeProvider
         (FieldType.Double, DoubleValue d) => d.Value,
         (FieldType.String, StringValue s) => s.Value,
         (FieldType.Bytes, BytesValue b) => ByteString.CopyFrom(b.Value.ToArray()),
-        (FieldType.Enum, IntValue i) => (int)i.Value,
+        // Enum values are stored as int32 in proto C#. Reject CEL ints outside int32 range
+        // rather than silently truncating.
+        (FieldType.Enum, IntValue i) when i.Value >= int.MinValue && i.Value <= int.MaxValue => (int)i.Value,
+        (FieldType.Enum, EnumValue e) when e.Number >= int.MinValue && e.Number <= int.MaxValue => (int)e.Number,
         (FieldType.Message, _) => MessageOrWrapperFor(fd, value)!,
         (_, NullValue) => null,
         _ => Cel.Runtime.ValueAdapter.ToClr(value),
