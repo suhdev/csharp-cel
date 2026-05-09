@@ -28,16 +28,22 @@ public sealed class Evaluator
     private readonly CheckedAst _ast;
     private readonly FunctionRegistry _functions;
     private readonly PocoAdapter _poco;
+    private readonly ITypeProvider _typeProvider;
 
     public int MaxIterations { get; init; } = 100_000;
 
-    public Evaluator(CheckedAst ast, FunctionRegistry functions, PocoAdapter? pocoAdapter = null)
+    public Evaluator(
+        CheckedAst ast,
+        FunctionRegistry functions,
+        PocoAdapter? pocoAdapter = null,
+        ITypeProvider? typeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(ast);
         ArgumentNullException.ThrowIfNull(functions);
         _ast = ast;
         _functions = functions;
         _poco = pocoAdapter ?? PocoAdapter.Default;
+        _typeProvider = typeProvider ?? NullTypeProvider.Instance;
     }
 
     /// <summary>Evaluate the AST against the supplied activation. Returns a raw <see cref="CelValue"/>.</summary>
@@ -86,22 +92,22 @@ public sealed class Evaluator
         {
             if (activation.TryResolve(refInfo.Name, out var rawQualified))
             {
-                return ValueAdapter.ToCelValue(rawQualified);
+                return WrapManagedAware(rawQualified);
             }
         }
 
         if (activation.TryResolve(name, out var raw))
         {
-            return ValueAdapter.ToCelValue(raw);
+            return WrapManagedAware(raw);
         }
         return CelValue.Error($"no such variable: {e.Name}");
     }
 
-    private static CelValue VisitSelectAsQualifiedVariable(string qualifiedName, IActivation activation)
+    private CelValue VisitSelectAsQualifiedVariable(string qualifiedName, IActivation activation)
     {
         if (activation.TryResolve(qualifiedName, out var raw))
         {
-            return ValueAdapter.ToCelValue(raw);
+            return WrapManagedAware(raw);
         }
         return CelValue.Error($"no such variable: {qualifiedName}");
     }
@@ -153,17 +159,53 @@ public sealed class Evaluator
     private bool HasField(CelValue operand, string field) => operand switch
     {
         MapValue m => MapContainsKey(m, CelValue.Of(field)),
-        ObjectValue o => _poco.HasField(o.Native, field) && _poco.TryGet(o.Native, field, out var v) && v is not null,
+        ObjectValue o => HasObjectField(o, field),
         _ => false,
     };
 
+    private bool HasObjectField(ObjectValue o, string field)
+    {
+        // Type-provider-managed instances apply proto presence semantics.
+        if (_typeProvider.IsManagedInstance(o.Native))
+        {
+            return _typeProvider.HasField(o.Native, field);
+        }
+        return _poco.HasField(o.Native, field)
+            && _poco.TryGet(o.Native, field, out var v)
+            && v is not null;
+    }
+
     private CelValue ReadObjectField(ObjectValue o, string field)
     {
+        // Try the type provider first (proto types unwrap wrappers, route oneof, etc.).
+        if (_typeProvider.IsManagedInstance(o.Native)
+            && _typeProvider.TryReadField(o.Native, field, out var protoVal))
+        {
+            return WrapManagedAware(protoVal);
+        }
         if (!_poco.TryGet(o.Native, field, out var raw))
         {
             return CelValue.Error($"no such field: {field}");
         }
-        return ValueAdapter.ToCelValue(raw);
+        return WrapManagedAware(raw);
+    }
+
+    /// <summary>
+    /// Wrap a raw CLR value as a CelValue, asking the type provider for the proper proto type
+    /// name when the result is a managed message instance.
+    /// </summary>
+    private CelValue WrapManagedAware(object? raw)
+    {
+        var v = ValueAdapter.ToCelValue(raw);
+        if (v is ObjectValue ov && _typeProvider.IsManagedInstance(ov.Native))
+        {
+            var name = _typeProvider.TypeNameOf(ov.Native);
+            if (name is not null && !string.Equals(name, ov.TypeName, StringComparison.Ordinal))
+            {
+                return new ObjectValue(name, ov.Native);
+            }
+        }
+        return v;
     }
 
     private static CelValue MapLookup(MapValue map, CelValue key, bool reportMissing)
@@ -391,9 +433,8 @@ public sealed class Evaluator
 
     private CelValue VisitStruct(CreateStructExpr e, IActivation activation)
     {
-        // Without a TypeProvider we cannot construct typed objects. For now, flatten to a map
-        // keyed by string field names — usable for many test cases and clearly debuggable.
-        var builder = ImmutableDictionary.CreateBuilder<CelValue, CelValue>();
+        // Resolve fields to CelValues (with optional unwrap).
+        var fields = new Dictionary<string, CelValue>(StringComparer.Ordinal);
         foreach (var f in e.Fields)
         {
             var v = Visit(f.Value, activation);
@@ -409,9 +450,32 @@ public sealed class Evaluator
                     v = opt.Inner!;
                 }
             }
-            builder[CelValue.Of(f.Name)] = v;
+            fields[f.Name] = v;
         }
-        return new MapValue(builder.ToImmutable());
+
+        // The checker may have resolved a container-relative type name ("TestAllTypes") to its
+        // qualified form ("cel.expr.conformance.proto3.TestAllTypes"). Prefer that over the raw
+        // source-text name on the AST node.
+        var typeName = _ast.ReferenceMap.TryGetValue(e.Id, out var refInfo) ? refInfo.Name : e.MessageName;
+
+        // Prefer the type provider for typed construction (proto messages).
+        if (_typeProvider.KnowsType(typeName))
+        {
+            var instance = _typeProvider.Construct(typeName, fields);
+            if (instance is null)
+            {
+                return CelValue.Error($"failed to construct {typeName}");
+            }
+            return new ObjectValue(typeName, instance);
+        }
+
+        // Fallback: flatten to a map keyed by field name.
+        var mapBuilder = ImmutableDictionary.CreateBuilder<CelValue, CelValue>();
+        foreach (var (name, value) in fields)
+        {
+            mapBuilder[CelValue.Of(name)] = value;
+        }
+        return new MapValue(mapBuilder.ToImmutable());
     }
 
     private CelValue VisitComprehension(ComprehensionExpr e, IActivation activation)

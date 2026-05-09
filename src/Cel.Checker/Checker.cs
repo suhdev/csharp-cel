@@ -295,13 +295,25 @@ public sealed class Checker
 
     private CelType VisitStruct(CreateStructExpr e)
     {
-        // Without a TypeProvider, we cannot validate field names or types — type-check the
-        // value sub-expressions and assign the named object type; runtime will catch mismatches.
         foreach (var f in e.Fields)
         {
             Visit(f.Value);
         }
-        return CelTypes.Object(e.MessageName);
+
+        // Resolve the type name through the container if a type provider knows the qualified
+        // form. Records the resolved full name in the reference map so the evaluator can
+        // dispatch to the right type without re-resolving.
+        var resolvedName = e.MessageName;
+        foreach (var candidate in _env.QualifiedCandidates(e.MessageName))
+        {
+            if (_env.TypeProvider.KnowsType(candidate))
+            {
+                resolvedName = candidate;
+                break;
+            }
+        }
+        _refs[e.Id] = new ResolvedReference(resolvedName);
+        return CelTypes.Object(resolvedName);
     }
 
     private CelType VisitComprehension(ComprehensionExpr e)

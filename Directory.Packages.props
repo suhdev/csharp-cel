@@ -6,5 +6,6 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Google.Protobuf" Version="3.29.1" />
+    <PackageVersion Include="Grpc.Tools" Version="2.66.0" />
   </ItemGroup>
 </Project>

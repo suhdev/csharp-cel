@@ -13,7 +13,7 @@ namespace Cel.Conformance;
 internal static class ValueMapper
 {
     /// <summary>Parse a <c>cel.expr.Value</c> message.</summary>
-    public static CelValue ParseValue(TextProtoMessage msg)
+    public static CelValue ParseValue(TextProtoMessage msg, ProtoTypeProvider? proto = null)
     {
         foreach (var f in msg.Fields)
         {
@@ -34,9 +34,9 @@ internal static class ValueMapper
                 case "bytes_value":
                     return ParseBytes((TextProtoString)f.Value);
                 case "list_value":
-                    return ParseList(((TextProtoMessageValue)f.Value).Message);
+                    return ParseList(((TextProtoMessageValue)f.Value).Message, proto);
                 case "map_value":
-                    return ParseMap(((TextProtoMessageValue)f.Value).Message);
+                    return ParseMap(((TextProtoMessageValue)f.Value).Message, proto);
                 case "type_value":
                     return new TypeValue(NamedType(((TextProtoString)f.Value).Value));
                 case "enum_value":
@@ -44,18 +44,52 @@ internal static class ValueMapper
                     var enumMsg = ((TextProtoMessageValue)f.Value).Message;
                     return CelValue.Of(enumMsg.Int("value") ?? 0);
                 }
+                case "object_value":
+                {
+                    var anyMsg = ((TextProtoMessageValue)f.Value).Message;
+                    return ParseObjectValue(anyMsg, proto);
+                }
             }
         }
         // An entirely empty Value message represents the default — bool false in proto3.
         return CelValue.False;
     }
 
+    /// <summary>
+    /// Parse a <c>google.protobuf.Any</c>-shaped object_value: contains a single bracketed
+    /// <c>[type.googleapis.com/X]{ ... }</c> field whose body is the typed message.
+    /// </summary>
+    private static CelValue ParseObjectValue(TextProtoMessage anyMsg, ProtoTypeProvider? proto)
+    {
+        foreach (var f in anyMsg.Fields)
+        {
+            if (f.Name.Length < 2 || f.Name[0] != '[' || f.Name[^1] != ']')
+            {
+                continue;
+            }
+            var typeUrl = f.Name[1..^1];
+            var slash = typeUrl.LastIndexOf('/');
+            var typeName = slash >= 0 ? typeUrl[(slash + 1)..] : typeUrl;
+            if (proto is null || f.Value is not TextProtoMessageValue body)
+            {
+                return CelValue.Error($"object_value of type {typeName} requires proto runtime");
+            }
+            var msg = proto.BuildFromTextProto(typeName, body.Message);
+            if (msg is null)
+            {
+                return CelValue.Error($"unknown proto type: {typeName}");
+            }
+            return new ObjectValue(typeName, msg);
+        }
+        return CelValue.Error("object_value missing typed body");
+    }
+
     /// <summary>Parse a <c>cel.expr.ExprValue</c> wrapper. Returns null if the wrapped value is an unknown.</summary>
-    public static (CelValue? Value, bool IsUnknown, bool IsError) ParseExprValue(TextProtoMessage msg)
+    public static (CelValue? Value, bool IsUnknown, bool IsError) ParseExprValue(TextProtoMessage msg, ProtoTypeProvider? proto = null)
     {
         if (msg.Sub("value") is { } valueMsg)
         {
-            return (ParseValue(valueMsg), false, false);
+            return (ParseValue(valueMsg, proto), false, false);
         }
         if (msg.FirstOrNull("error") is not null)
         {
@@ -129,17 +163,17 @@ internal static class ValueMapper
 
     // ── helpers ──
 
-    private static CelValue ParseList(TextProtoMessage msg)
+    private static CelValue ParseList(TextProtoMessage msg, ProtoTypeProvider? proto)
     {
         var builder = ImmutableArray.CreateBuilder<CelValue>();
         foreach (var v in msg.SubAll("values"))
         {
-            builder.Add(ParseValue(v));
+            builder.Add(ParseValue(v, proto));
         }
         return new ListValue(builder.ToImmutable());
     }
 
-    private static CelValue ParseMap(TextProtoMessage msg)
+    private static CelValue ParseMap(TextProtoMessage msg, ProtoTypeProvider? proto)
     {
         var builder = ImmutableDictionary.CreateBuilder<CelValue, CelValue>();
         foreach (var entry in msg.SubAll("entries"))
@@ -150,7 +184,7 @@ internal static class ValueMapper
             {
                 continue;
             }
-            builder[ParseValue(k)] = ParseValue(v);
+            builder[ParseValue(k, proto)] = ParseValue(v, proto);
         }
         return new MapValue(builder.ToImmutable());
     }

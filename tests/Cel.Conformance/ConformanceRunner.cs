@@ -6,6 +6,7 @@ using Cel.Diagnostics;
 using Cel.Extensions;
 using Cel.Runtime;
 using Cel.Values;
+using Google.Protobuf.Reflection;
 
 namespace Cel.Conformance;
 
@@ -33,6 +34,32 @@ public sealed record FileResult(
 
 public static class ConformanceRunner
 {
+    /// <summary>
+    /// Type provider built once at startup, populated with every <see cref="MessageDescriptor"/>
+    /// reachable from the generated cel-spec test message types (including nested types and
+    /// well-known wrappers). Shared across every test run.
+    /// </summary>
+    private static readonly ProtoTypeProvider Provider = BuildProvider();
+
+    private static ProtoTypeProvider BuildProvider()
+    {
+        var descriptors = new List<MessageDescriptor>();
+        Walk(global::Cel.Expr.Conformance.Proto3.TestAllTypes.Descriptor, descriptors);
+        Walk(global::Cel.Expr.Conformance.Proto3.NestedTestAllTypes.Descriptor, descriptors);
+        Walk(global::Cel.Expr.Conformance.Proto2.TestAllTypes.Descriptor, descriptors);
+        Walk(global::Cel.Expr.Conformance.Proto2.NestedTestAllTypes.Descriptor, descriptors);
+        return new ProtoTypeProvider(descriptors);
+
+        static void Walk(MessageDescriptor d, List<MessageDescriptor> sink)
+        {
+            sink.Add(d);
+            foreach (var nested in d.NestedTypes)
+            {
+                Walk(nested, sink);
+            }
+        }
+    }
+
     /// <summary>
     /// Run conformance tests from <paramref name="testdataDir"/>. Each <c>.textproto</c> file
     /// is treated as a <c>SimpleTestFile</c>; tests using features this implementation does
@@ -129,6 +156,7 @@ public static class ConformanceRunner
 
         // Build env from type_env + container.
         var envBuilder = CelEnv.NewBuilder()
+            .UseTypeProvider(Provider)
             .Use(StringsExtension.Instance)
             .Use(MathExtension.Instance)
             .Use(EncodersExtension.Instance)
@@ -158,7 +186,7 @@ public static class ConformanceRunner
             var k = b.Str("key");
             var vMsg = b.Sub("value");
             if (k is null || vMsg is null) { continue; }
-            var (cv, isUnknown, _) = ValueMapper.ParseExprValue(vMsg);
+            var (cv, isUnknown, _) = ValueMapper.ParseExprValue(vMsg, Provider);
             if (isUnknown)
             {
                 return new(fileName, sectionName, name, TestOutcome.Skip, "unknown bindings");
@@ -202,7 +230,7 @@ public static class ConformanceRunner
 
         // Default expected when no matcher: bool true.
         var expectedValue = test.Sub("value") is { } valueMsg
-            ? ValueMapper.ParseValue(valueMsg)
+            ? ValueMapper.ParseValue(valueMsg, Provider)
             : CelValue.True;
 
         if (CelEquality.Equals(actual, expectedValue))

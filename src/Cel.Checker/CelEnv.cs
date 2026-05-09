@@ -24,17 +24,20 @@ public sealed class CelEnv
     public ImmutableDictionary<string, VariableDecl> Variables { get; }
     public ImmutableDictionary<string, FunctionDecl> Functions { get; }
     public ImmutableArray<ICelExtension> Extensions { get; }
+    public ITypeProvider TypeProvider { get; }
 
     private CelEnv(
         string container,
         ImmutableDictionary<string, VariableDecl> variables,
         ImmutableDictionary<string, FunctionDecl> functions,
-        ImmutableArray<ICelExtension> extensions)
+        ImmutableArray<ICelExtension> extensions,
+        ITypeProvider typeProvider)
     {
         Container = container;
         Variables = variables;
         Functions = functions;
         Extensions = extensions;
+        TypeProvider = typeProvider;
     }
 
     public static Builder NewBuilder() => new();
@@ -79,6 +82,7 @@ public sealed class CelEnv
         b.AddVariablesFrom(Variables);
         b.AddFunctionsFrom(Functions);
         b.WithoutStandardLibrary(); // base already has it
+        b.UseTypeProvider(TypeProvider);
         foreach (var ext in Extensions)
         {
             b.Use(ext);
@@ -92,7 +96,16 @@ public sealed class CelEnv
         private readonly Dictionary<string, VariableDecl> _vars = new(StringComparer.Ordinal);
         private readonly Dictionary<string, FunctionDecl> _fns = new(StringComparer.Ordinal);
         private readonly List<ICelExtension> _extensions = [];
+        private ITypeProvider _typeProvider = NullTypeProvider.Instance;
         private bool _includeStdlib = true;
+
+        /// <summary>Register a type provider for proto / host-object support.</summary>
+        public Builder UseTypeProvider(ITypeProvider provider)
+        {
+            ArgumentNullException.ThrowIfNull(provider);
+            _typeProvider = provider;
+            return this;
+        }
 
         public Builder SetContainer(string container)
         {
@@ -174,7 +187,8 @@ public sealed class CelEnv
                 _container,
                 _vars.ToImmutableDictionary(StringComparer.Ordinal),
                 _fns.ToImmutableDictionary(StringComparer.Ordinal),
-                [.. _extensions]);
+                [.. _extensions],
+                _typeProvider);
         }
     }
 }

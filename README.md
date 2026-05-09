@@ -46,12 +46,12 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 | Category | Status |
 |----------|--------|
 | `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
-| `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **80–96%** |
-| `optionals`, `comparisons`, `namespace` | **60–71%** |
-| `proto2`, `proto3`, `enums`, `dynamic`, `wrappers` | **7–30%** — proto runtime not yet wired |
+| `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **82–96%** |
+| `optionals`, `comparisons`, `proto2`, `proto3`, `namespace` | **57–71%** |
+| `enums`, `wrappers`, `dynamic` | **23–30%** — partial proto runtime; needs Any/Struct/Value support |
 | `bindings_ext`, `block_ext` | **0%** — `cel.bind` / `cel.@block` need parser-level macro hooks |
 | `network_ext`, `macros2`, `proto2_ext`, `type_deduction`, `unknowns` | **0–17%** — features not yet built |
-| **Total** | **1421 / 2263 ran (63%) over 2454 cases (191 skipped)** |
+| **Total** | **1518 / 2263 ran (67%) over 2454 cases (191 skipped)** |
 
 ### Known gaps
 

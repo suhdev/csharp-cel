@@ -35,6 +35,11 @@ public static class CelEquality
             (TypeValue x, TypeValue y) => x.Inner.Equals(y.Inner),
             (OptionalValue x, OptionalValue y) =>
                 x.HasValue == y.HasValue && (!x.HasValue || Equals(x.Inner!, y.Inner!)),
+            // Compare ObjectValue by the wrapped instance's own equality (proto messages have
+            // structural Equals; POCOs may or may not — pragmatically that's the user's choice).
+            (ObjectValue x, ObjectValue y) =>
+                string.Equals(x.TypeName, y.TypeName, StringComparison.Ordinal)
+                && Equals(x.Native, y.Native),
             _ => a.GetType() == b.GetType() && a.Equals(b),
         };
     }

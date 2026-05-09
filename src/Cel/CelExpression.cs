@@ -54,7 +54,7 @@ public sealed class CompiledProgram
         {
             ext.ConfigureRuntime(registry.Bind);
         }
-        _evaluator = new Evaluator(ast, registry);
+        _evaluator = new Evaluator(ast, registry, typeProvider: env.TypeProvider);
     }
 
     /// <summary>Result type as inferred by the checker.</summary>
