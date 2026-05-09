@@ -40,6 +40,10 @@ public static class ConformanceRunner
     /// well-known wrappers). Shared across every test run.
     /// </summary>
     private static readonly ProtoTypeProvider Provider = BuildProvider();
+    private static readonly IReadOnlyList<(string Name, long Value)> EnumConstants
+        = Provider.EnumConstants().ToList();
+    private static readonly Dictionary<string, long> EnumByName
+        = EnumConstants.ToDictionary(e => e.Name, e => e.Value, StringComparer.Ordinal);
 
     private static ProtoTypeProvider BuildProvider()
     {
@@ -182,6 +186,12 @@ public static class ConformanceRunner
             .Use(MathExtension.Instance)
             .Use(EncodersExtension.Instance)
             .Use(SetsExtension.Instance);
+        // Pre-register every reachable proto enum constant as an int variable so
+        // `pkg.MyEnum.VALUE` resolves through normal qualified-name lookup.
+        foreach (var (enumName, _) in EnumConstants)
+        {
+            envBuilder.Variable(enumName, Cel.Types.CelTypes.Int);
+        }
         if (test.Str("container") is { } container)
         {
             envBuilder.SetContainer(container);
@@ -200,8 +210,12 @@ public static class ConformanceRunner
         }
         var env = envBuilder.Build();
 
-        // Build bindings.
+        // Build bindings — start with enum constants (so name resolution finds them).
         var bindings = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (enumName, enumValue) in EnumConstants)
+        {
+            bindings[enumName] = enumValue;
+        }
         foreach (var b in test.SubAll("bindings"))
         {
             var k = b.Str("key");

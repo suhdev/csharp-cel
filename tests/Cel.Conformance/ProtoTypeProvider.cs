@@ -55,6 +55,38 @@ public sealed class ProtoTypeProvider : ITypeProvider
     public CelType? ResolveType(string typeName) =>
         _byName.ContainsKey(typeName) ? CelTypes.Object(typeName) : null;
 
+    /// <summary>
+    /// Enumerate every (qualified-name, numeric-value) pair for the enum constants reachable
+    /// from registered message descriptors. Used to declare enum constants as integer
+    /// variables in the env so <c>GlobalEnum.GAZ</c> resolves like any qualified variable.
+    /// </summary>
+    public IEnumerable<(string Name, long Value)> EnumConstants()
+    {
+        foreach (var desc in _byName.Values)
+        {
+            foreach (var enumDesc in desc.EnumTypes)
+            {
+                foreach (var v in enumDesc.Values)
+                {
+                    yield return ($"{enumDesc.FullName}.{v.Name}", v.Number);
+                }
+            }
+        }
+        // Also walk top-level enums by inspecting descriptor file enum types.
+        var seenFiles = new HashSet<FileDescriptor>();
+        foreach (var desc in _byName.Values)
+        {
+            if (!seenFiles.Add(desc.File)) { continue; }
+            foreach (var enumDesc in desc.File.EnumTypes)
+            {
+                foreach (var v in enumDesc.Values)
+                {
+                    yield return ($"{enumDesc.FullName}.{v.Name}", v.Number);
+                }
+            }
+        }
+    }
+
     public bool IsManagedInstance(object instance) => instance is IMessage;
 
     public string? TypeNameOf(object instance) =>
@@ -62,8 +94,9 @@ public sealed class ProtoTypeProvider : ITypeProvider
 
     /// <summary>
     /// Project a managed instance to a CEL primitive when applicable. Wrapper messages
-    /// (<c>google.protobuf.{Bool,Int32,...}Value</c>), <c>Timestamp</c>, and <c>Duration</c>
-    /// all unwrap to native CEL values; arbitrary other messages keep their <see cref="ObjectValue"/>
+    /// (<c>google.protobuf.{Bool,Int32,...}Value</c>), <c>Timestamp</c>, <c>Duration</c>,
+    /// <c>Any</c> (unpacked recursively), and <c>Value</c> (oneof case dispatched) all
+    /// unwrap to native CEL values; arbitrary other messages keep their <see cref="ObjectValue"/>
     /// wrapping by returning null here.
     /// </summary>
     public CelValue? Project(object instance)
@@ -85,8 +118,62 @@ public sealed class ProtoTypeProvider : ITypeProvider
             PbBytesValue x => CelValue.Of(System.Collections.Immutable.ImmutableArray.Create(x.Value.ToByteArray())),
             PbTimestamp ts => CelValue.Of(CelTimestamp.FromDateTimeOffset(ts.ToDateTimeOffset())),
             PbDuration d => CelValue.Of(new CelDuration(d.Seconds * CelDuration.NanosPerSecond + d.Nanos)),
+            PbAny any => UnpackAny(any),
+            global::Google.Protobuf.WellKnownTypes.Value v => ProjectValue(v),
+            global::Google.Protobuf.WellKnownTypes.ListValue lv => ProjectListValue(lv),
+            global::Google.Protobuf.WellKnownTypes.Struct st => ProjectStruct(st),
             _ => null,
         };
+    }
+
+    private CelValue? UnpackAny(PbAny any)
+    {
+        var typeUrl = any.TypeUrl;
+        if (string.IsNullOrEmpty(typeUrl))
+        {
+            return CelValue.Null;
+        }
+        var slash = typeUrl.LastIndexOf('/');
+        var typeName = slash >= 0 ? typeUrl[(slash + 1)..] : typeUrl;
+        if (!_byName.TryGetValue(typeName, out var desc))
+        {
+            return null; // unknown — keep as ObjectValue
+        }
+        var unpacked = (IMessage)Activator.CreateInstance(desc.ClrType)!;
+        unpacked.MergeFrom(any.Value);
+        // Recurse so a packed wrapper unwraps to its primitive.
+        return Project(unpacked) ?? new ObjectValue(typeName, unpacked);
+    }
+
+    private CelValue ProjectValue(global::Google.Protobuf.WellKnownTypes.Value v) => v.KindCase switch
+    {
+        global::Google.Protobuf.WellKnownTypes.Value.KindOneofCase.NullValue => CelValue.Null,
+        global::Google.Protobuf.WellKnownTypes.Value.KindOneofCase.BoolValue => CelValue.Of(v.BoolValue),
+        global::Google.Protobuf.WellKnownTypes.Value.KindOneofCase.NumberValue => CelValue.Of(v.NumberValue),
+        global::Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StringValue => CelValue.Of(v.StringValue),
+        global::Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StructValue => ProjectStruct(v.StructValue),
+        global::Google.Protobuf.WellKnownTypes.Value.KindOneofCase.ListValue => ProjectListValue(v.ListValue),
+        _ => CelValue.Null,
+    };
+
+    private CelValue ProjectListValue(global::Google.Protobuf.WellKnownTypes.ListValue lv)
+    {
+        var builder = System.Collections.Immutable.ImmutableArray.CreateBuilder<CelValue>(lv.Values.Count);
+        foreach (var item in lv.Values)
+        {
+            builder.Add(ProjectValue(item));
+        }
+        return new ListValue(builder.ToImmutable());
+    }
+
+    private CelValue ProjectStruct(global::Google.Protobuf.WellKnownTypes.Struct st)
+    {
+        var builder = System.Collections.Immutable.ImmutableDictionary.CreateBuilder<CelValue, CelValue>();
+        foreach (var (k, val) in st.Fields)
+        {
+            builder[CelValue.Of(k)] = ProjectValue(val);
+        }
+        return new MapValue(builder.ToImmutable());
     }
 
     /// <summary>
@@ -427,11 +514,32 @@ public sealed class ProtoTypeProvider : ITypeProvider
         {
             return null;
         }
-        if (value is ObjectValue o && o.Native is IMessage msg)
+
+        var typeName = fd.MessageType.FullName;
+        // For Any/Value/Struct/ListValue fields, always project — even if the CelValue already
+        // wraps an IMessage of some specific type, we need to repack/route through the
+        // well-known shape.
+        switch (typeName)
+        {
+            case "google.protobuf.Any": return PackToAny(value);
+            case "google.protobuf.Value": return ToWellKnownValue(value);
+            case "google.protobuf.ListValue":
+                return value is ListValue lv ? ToWellKnownListValue(lv)
+                     : value is ObjectValue { Native: global::Google.Protobuf.WellKnownTypes.ListValue plv } ? plv
+                     : null;
+            case "google.protobuf.Struct":
+                return value is MapValue mv ? ToWellKnownStruct(mv)
+                     : value is ObjectValue { Native: global::Google.Protobuf.WellKnownTypes.Struct ps } ? ps
+                     : null;
+        }
+
+        // For other message fields, an exact-type wrapped IMessage passes through.
+        if (value is ObjectValue o && o.Native is IMessage msg
+            && string.Equals(msg.Descriptor.FullName, typeName, StringComparison.Ordinal))
         {
             return msg;
         }
-        return fd.MessageType.FullName switch
+        return typeName switch
         {
             // Generated as nullable primitives — pass the unwrapped CLR value directly.
             "google.protobuf.BoolValue" => value is BoolValue b ? (object?)b.Value : null,
@@ -460,8 +568,81 @@ public sealed class ProtoTypeProvider : ITypeProvider
             "google.protobuf.Duration" => value is DurationValue d
                 ? PbDuration.FromTimeSpan(d.Value.ToTimeSpan())
                 : null,
+            // Any: pack the supplied value into a well-known wrapper if it's a CEL primitive,
+            // then wrap that in google.protobuf.Any.
+            "google.protobuf.Any" => PackToAny(value),
+            // Value: route to the matching oneof case.
+            "google.protobuf.Value" => ToWellKnownValue(value),
+            "google.protobuf.ListValue" => value is ListValue lv ? ToWellKnownListValue(lv) : null,
+            "google.protobuf.Struct" => value is MapValue mv ? ToWellKnownStruct(mv) : null,
             _ => null,
         };
+    }
+
+    private static PbAny? PackToAny(CelValue value)
+    {
+        IMessage? toPack = value switch
+        {
+            BoolValue b => new PbBoolValue { Value = b.Value },
+            IntValue i => new PbInt64Value { Value = i.Value },
+            UintValue u => new PbUInt64Value { Value = u.Value },
+            DoubleValue d => new PbDoubleValue { Value = d.Value },
+            StringValue s => new PbStringValue { Value = s.Value },
+            BytesValue b => new PbBytesValue { Value = ByteString.CopyFrom(b.Value.ToArray()) },
+            ObjectValue o when o.Native is IMessage im => im,
+            _ => null,
+        };
+        return toPack is null ? null : PbAny.Pack(toPack);
+    }
+
+    private static global::Google.Protobuf.WellKnownTypes.Value ToWellKnownValue(CelValue value) => value switch
+    {
+        NullValue => new global::Google.Protobuf.WellKnownTypes.Value { NullValue = global::Google.Protobuf.WellKnownTypes.NullValue.NullValue },
+        BoolValue b => new global::Google.Protobuf.WellKnownTypes.Value { BoolValue = b.Value },
+        IntValue i => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = i.Value },
+        UintValue u => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = u.Value },
+        DoubleValue d => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = d.Value },
+        StringValue s => new global::Google.Protobuf.WellKnownTypes.Value { StringValue = s.Value },
+        ListValue lv => new global::Google.Protobuf.WellKnownTypes.Value { ListValue = ToWellKnownListValue(lv) },
+        MapValue mv => new global::Google.Protobuf.WellKnownTypes.Value { StructValue = ToWellKnownStruct(mv) },
+        ObjectValue o when o.Native is IMessage im => UnwrapToValue(im),
+        _ => new global::Google.Protobuf.WellKnownTypes.Value { NullValue = global::Google.Protobuf.WellKnownTypes.NullValue.NullValue },
+    };
+
+    private static global::Google.Protobuf.WellKnownTypes.Value UnwrapToValue(IMessage msg) => msg switch
+    {
+        PbBoolValue x => new global::Google.Protobuf.WellKnownTypes.Value { BoolValue = x.Value },
+        PbInt32Value x => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = x.Value },
+        PbInt64Value x => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = x.Value },
+        PbUInt32Value x => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = x.Value },
+        PbUInt64Value x => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = x.Value },
+        PbFloatValue x => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = x.Value },
+        PbDoubleValue x => new global::Google.Protobuf.WellKnownTypes.Value { NumberValue = x.Value },
+        PbStringValue x => new global::Google.Protobuf.WellKnownTypes.Value { StringValue = x.Value },
+        _ => new global::Google.Protobuf.WellKnownTypes.Value { NullValue = global::Google.Protobuf.WellKnownTypes.NullValue.NullValue },
+    };
+
+    private static global::Google.Protobuf.WellKnownTypes.ListValue ToWellKnownListValue(ListValue lv)
+    {
+        var pblv = new global::Google.Protobuf.WellKnownTypes.ListValue();
+        foreach (var item in lv.Elements)
+        {
+            pblv.Values.Add(ToWellKnownValue(item));
+        }
+        return pblv;
+    }
+
+    private static global::Google.Protobuf.WellKnownTypes.Struct ToWellKnownStruct(MapValue mv)
+    {
+        var pbst = new global::Google.Protobuf.WellKnownTypes.Struct();
+        foreach (var (k, val) in mv.Entries)
+        {
+            if (k is StringValue sk)
+            {
+                pbst.Fields[sk.Value] = ToWellKnownValue(val);
+            }
+        }
+        return pbst;
     }
 
     private static FieldDescriptor? FindField(MessageDescriptor desc, string name)
