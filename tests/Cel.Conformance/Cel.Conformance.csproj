@@ -9,5 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cel\Cel.csproj" />
+    <ProjectReference Include="..\..\src\Cel.Extensions\Cel.Extensions.csproj" />
+    <ProjectReference Include="..\..\src\Cel.Runtime\Cel.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\Cel.Core\Cel.Core.csproj" />
   </ItemGroup>
 </Project>

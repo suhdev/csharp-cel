@@ -88,7 +88,11 @@ internal static class TypeAlgebra
         }
         return type switch
         {
-            TypeParamType tp when sub.TryGetValue(tp.ParamName, out var t) && !ReferenceEquals(t, tp) =>
+            // Avoid recursing through a self-aliasing binding ({A: TypeParam(A)} from earlier
+            // unification); compare by name rather than reference so that distinct TypeParam
+            // instances with the same name don't trigger an infinite chase.
+            TypeParamType tp when sub.TryGetValue(tp.ParamName, out var t)
+                && !(t is TypeParamType bound && bound.ParamName == tp.ParamName) =>
                 Substitute(t, sub),
             ListType l => l with { ElementType = Substitute(l.ElementType, sub) },
             MapType m => m with
@@ -164,24 +168,44 @@ internal static class TypeAlgebra
     {
         if (expected is TypeParamType etp)
         {
-            if (sub.TryGetValue(etp.ParamName, out var bound))
-            {
-                sub[etp.ParamName] = MostGeneral(bound, Substitute(actual, sub));
-                return true;
-            }
-            sub[etp.ParamName] = Substitute(actual, sub);
+            BindTypeParam(etp.ParamName, Substitute(actual, sub), sub);
             return true;
         }
         if (actual is TypeParamType atp)
         {
-            if (sub.TryGetValue(atp.ParamName, out var bound))
-            {
-                sub[atp.ParamName] = MostGeneral(bound, Substitute(expected, sub));
-                return true;
-            }
-            sub[atp.ParamName] = Substitute(expected, sub);
+            BindTypeParam(atp.ParamName, Substitute(expected, sub), sub);
             return true;
         }
         return IsAssignable(expected, actual, sub);
     }
+
+    private static void BindTypeParam(string name, CelType value, IDictionary<string, CelType> sub)
+    {
+        // Occurs check — refuse any binding A := T(...A...). Such a binding would either be
+        // identity (A := A) or self-referential (A := list(A)), both of which make Substitute
+        // recurse forever.
+        if (Occurs(name, value))
+        {
+            return;
+        }
+        if (sub.TryGetValue(name, out var existing))
+        {
+            sub[name] = MostGeneral(existing, value);
+            return;
+        }
+        sub[name] = value;
+    }
+
+    private static bool Occurs(string name, CelType type) => type switch
+    {
+        TypeParamType tp => tp.ParamName == name,
+        ListType l => Occurs(name, l.ElementType),
+        MapType m => Occurs(name, m.KeyType) || Occurs(name, m.ValueType),
+        OptionalType o => Occurs(name, o.InnerType),
+        FunctionType f => Occurs(name, f.ResultType) || f.ArgTypes.Any(t => Occurs(name, t)),
+        TypeType { Parameter: { } inner } => Occurs(name, inner),
+        ObjectType o when !o.TypeArgs.IsDefaultOrEmpty => o.TypeArgs.Any(t => Occurs(name, t)),
+        AbstractType a when !a.Parameters.IsDefaultOrEmpty => a.Parameters.Any(t => Occurs(name, t)),
+        _ => false,
+    };
 }

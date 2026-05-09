@@ -236,7 +236,10 @@ internal static class Stdlib
         r.Bind("index_list", static a =>
         {
             var list = (ListValue)a[0];
-            var idx = I(a[1]);
+            if (!TryNumericIndex(a[1], out var idx))
+            {
+                return CelValue.Error($"invalid_argument: list index must be numeric, got {a[1].Type.Name}");
+            }
             if (idx < 0 || idx >= list.Elements.Length)
             {
                 return CelValue.Error($"index out of range: {idx}");
@@ -435,6 +438,32 @@ internal static class Stdlib
     {
         try { return op(U(args[0]), U(args[1])); }
         catch (OverflowException) { return CelValue.Error(overflowMsg); }
+    }
+
+    /// <summary>
+    /// Coerce a CEL value to a list index. Accepts <see cref="IntValue"/>, <see cref="UintValue"/>
+    /// (when in int range), and <see cref="DoubleValue"/> (when whole-numbered and finite). Returns
+    /// false otherwise — caller surfaces an error.
+    /// </summary>
+    private static bool TryNumericIndex(CelValue v, out long idx)
+    {
+        switch (v)
+        {
+            case IntValue i:
+                idx = i.Value;
+                return true;
+            case UintValue u when u.Value <= long.MaxValue:
+                idx = (long)u.Value;
+                return true;
+            case DoubleValue d when double.IsFinite(d.Value)
+                && d.Value >= long.MinValue && d.Value <= long.MaxValue
+                && Math.Truncate(d.Value) == d.Value:
+                idx = (long)d.Value;
+                return true;
+            default:
+                idx = 0;
+                return false;
+        }
     }
 
     private static CelValue? MapLookup(MapValue map, CelValue key)
