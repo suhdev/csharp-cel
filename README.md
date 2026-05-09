@@ -47,12 +47,11 @@ dotnet run --project tests/Cel.Conformance -- ../cel-spec/tests/simple/testdata 
 |----------|--------|
 | `basic`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `plumbing`, `string` | **100%** |
 | `math_ext`, `string_ext`, `timestamps`, `conversions`, `parse`, `fields` | **82–96%** |
-| `bindings_ext`, `comparisons` | **100%** |
-| `network_ext`, `dynamic`, `conversions`, `string_ext`, `wrappers`, `math_ext`, `timestamps`, `string` | **86–100%** |
-| `proto3`, `macros2`, `parse`, `proto2`, `enums`, `fields`, `namespace`, `optionals` | **73–87%** |
-| `block_ext` | **0%** — `cel.@block` is an internal optimisation form, not a user macro |
-| `proto2_ext`, `type_deduction`, `unknowns`, `encoders_ext` | **0–75%** — feature gaps |
-| **Total** | **2029 / 2263 ran (90%) over 2454 cases (191 skipped)** |
+| `basic`, `bindings_ext`, `comparisons`, `fp_math`, `integer_math`, `lists`, `logic`, `macros`, `network_ext`, `plumbing`, `string` | **100%** |
+| `dynamic`, `conversions`, `math_ext`, `block_ext`, `string_ext`, `wrappers`, `timestamps`, `macros2`, `proto3`, `fields`, `parse` | **83–98%** |
+| `namespace`, `optionals`, `proto2`, `enums`, `encoders_ext` | **73–80%** |
+| `proto2_ext`, `type_deduction`, `unknowns` | **0%** — feature gaps |
+| **Total** | **2066 / 2263 ran (91%) over 2454 cases (191 skipped)** |
 
 ### Known gaps
 

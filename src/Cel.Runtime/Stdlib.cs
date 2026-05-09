@@ -256,20 +256,11 @@ internal static class Stdlib
 
     private static void Indexing(FunctionRegistry r)
     {
-        r.Bind("index_list", static a =>
-        {
-            var list = (ListValue)a[0];
-            if (!TryNumericIndex(a[1], out var idx))
-            {
-                return CelValue.Error($"invalid_argument: list index must be numeric, got {a[1].Type.Name}");
-            }
-            if (idx < 0 || idx >= list.Elements.Length)
-            {
-                return CelValue.Error($"index out of range: {idx}");
-            }
-            return list.Elements[(int)idx];
-        });
-        r.Bind("index_map", static a => MapLookup((MapValue)a[0], a[1]) ?? CelValue.Error($"no such key: {a[1]}"));
+        // index_list / index_map are polymorphic at runtime: a dyn-injected operand may end
+        // up at the "wrong" overload, so each impl checks the actual type and routes
+        // accordingly. (The checker has already matched the call by parametric types.)
+        r.Bind("index_list", IndexAny);
+        r.Bind("index_map", IndexAny);
 
         r.Bind("optindex_list", static a =>
         {
@@ -602,6 +593,27 @@ internal static class Stdlib
     {
         try { return op(U(args[0]), U(args[1])); }
         catch (OverflowException) { return CelValue.Error(overflowMsg); }
+    }
+
+    private static CelValue IndexAny(ReadOnlySpan<CelValue> args)
+    {
+        switch (args[0])
+        {
+            case ListValue list:
+                if (!TryNumericIndex(args[1], out var idx))
+                {
+                    return CelValue.Error($"invalid_argument: list index must be numeric, got {args[1].Type.Name}");
+                }
+                if (idx < 0 || idx >= list.Elements.Length)
+                {
+                    return CelValue.Error($"index out of range: {idx}");
+                }
+                return list.Elements[(int)idx];
+            case MapValue map:
+                return MapLookup(map, args[1]) ?? CelValue.Error($"no such key: {args[1]}");
+            default:
+                return CelValue.Error($"cannot index {args[0].Type.Name}");
+        }
     }
 
     /// <summary>
