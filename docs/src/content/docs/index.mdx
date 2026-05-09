@@ -5,12 +5,14 @@ template: splash
 hero:
   tagline: Compile, type-check, and evaluate CEL against your POCOs — no protobuf required.
   actions:
+    # Hero actions are YAML, not markdown — the remark plugin doesn't see them,
+    # so the base path must be hard-coded here.
     - text: Get started
-      link: /getting-started/installation/
+      link: /csharp-cel/getting-started/installation/
       icon: right-arrow
       variant: primary
     - text: Browse the API
-      link: /reference/api/cel-expression/
+      link: /csharp-cel/reference/api/cel-expression/
       icon: external
 ---
 

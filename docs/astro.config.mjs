@@ -1,13 +1,21 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { remarkPrefixBase } from './plugins/remark-prefix-base.mjs';
+
+const BASE = '/csharp-cel/';
 
 export default defineConfig({
   // GitHub Pages: site is the user/org domain, base is the repo path. With
   // `<owner>.github.io/<repo>/` as the published URL, every internal link in
-  // the built site needs the base prefix — Starlight handles this for you.
+  // the built site needs the base prefix. Astro auto-prefixes static asset
+  // URLs and Starlight's sidebar slugs, but plain markdown links written as
+  // `/foo/bar/` are NOT — the remarkPrefixBase plugin below fixes that.
   site: 'https://suhdev.github.io',
-  base: '/csharp-cel/',
+  base: BASE,
+  markdown: {
+    remarkPlugins: [remarkPrefixBase(BASE)],
+  },
   integrations: [
     starlight({
       title: 'CEL for .NET',
