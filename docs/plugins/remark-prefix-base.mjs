@@ -18,8 +18,8 @@ export function remarkPrefixBase(base) {
     // No base configured — nothing to do.
     return () => () => {};
   }
-  return () => (tree) => {
-    visit(tree, (node) => {
+  return () => (/** @type {import('mdast').Root} */ tree) => {
+    visit(tree, (/** @type {any} */ node) => {
       if (
         node.type === 'link'
         && typeof node.url === 'string'
